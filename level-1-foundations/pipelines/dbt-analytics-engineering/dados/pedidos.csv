@@ -1,0 +1,56 @@
+id_pedido,id_cliente,data_pedido,status,forma_pagamento
+1001,11,2024-03-01,Completed,credit_card
+1002,12,2024-03-02,canceled,pix
+1003,4,2024/03/03,complete,
+1004,2,03-04-2024,completed,credit_card
+1005,10,2024-03-05,processing,credit_card
+1006,1,2024-03-06,Completed,pix
+1007,4,2024/03/07,completed,paypal
+1008,1,2024-03-08,refunded,pix
+1009,12,2024-03-09,refunded,Credit Card
+1010,4,2024-03-10,completed,paypal
+1011,5,2024-03-11,,debit_card
+1012,3,11-03-2024,Completed,boleto
+1013,5,2024-03-13,completed,pix
+1014,6,2024-03-14,Completed,credit_card
+1015,7,2024-03-15,Completed,boleto
+1016,6,2024/03/16,completed,boleto
+1017,1,2024-03-17,complete,paypal
+1018,2,2024-03-18,processing,credit_card
+1019,9,2024-03-19,completed,debit_card
+1020,11,2024-03-20,,debit_card
+1021,6,2024-03-21,,pix
+1022,12,2024-03-22,cancelled,credit_card
+1023,11,22-03-2024,Completed,debit_card
+1024,5,2024-03-24,Completed,debit_card
+1025,4,2024-03-25,completed,Credit Card
+1026,5,2024-03-26,shipped,
+1027,6,2024-03-27,complete,boleto
+1028,6,2024-03-28,completed,
+1029,5,2024-03-29,Completed,paypal
+1030,11,2024-03-30,complete,paypal
+1031,12,2024-03-01,completed,pix
+1032,8,2024-03-02,,boleto
+1033,11,2024/03/03,refunded,pix
+1034,11,03-04-2024,Completed,debit_card
+1035,1,2024-03-05,paid,debit_card
+1036,1,2024-03-06,cancelled,Credit Card
+1037,5,2024/03/07,completed,pix
+1038,10,2024-03-08,complete,pix
+1039,11,2024-03-09,shipped,Credit Card
+1040,11,2024-03-10,completed,pix
+1041,5,2024-03-11,complete,pix
+1042,12,11-03-2024,refunded,paypal
+1043,5,2024-03-13,cancelled,Credit Card
+1044,10,2024-03-14,processing,boleto
+1045,4,2024-03-15,Completed,paypal
+1046,8,2024/03/16,completed,debit_card
+1047,1,2024-03-17,Completed,pix
+1048,11,2024-03-18,complete,debit_card
+1049,11,2024-03-19,completed,paypal
+1050,2,2024-03-20,processing,Credit Card
+1051,10,2024-03-21,shipped,paypal
+1052,5,2024-03-22,completed,debit_card
+1053,1,22-03-2024,Completed,
+1054,9,2024-03-24,canceled,debit_card
+1055,11,2024-03-25,completed,credit_card

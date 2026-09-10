@@ -1,0 +1,10 @@
+id_produto,nome_produto,categoria,preco_unitario,ativo
+101,Notebook Pro 14,Eletrônicos,4500.00,true
+102,Mouse Sem Fio,Acessórios,89.90,true
+103,Teclado Mecânico,Acessórios,350.00,true
+104,Monitor 27,Eletrônicos,R$ 1299.90,true
+105,Cadeira Gamer,Móveis,980.00,true
+106,Webcam HD,Acessórios,220.00,false
+107,Headset Gamer,Acessórios,310.00,true
+108,Suporte Notebook,Acessórios,,true
+109,Mesa Office,Móveis,760.00,true
