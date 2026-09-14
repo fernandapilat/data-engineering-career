@@ -225,3 +225,102 @@ flowchart LR
 **d) Comparison Summary**
 * **View:** Zero storage | Slower read on complex queries | Always up to date.
 * **Table:** Disk storage required | Faster read on analytical queries | Requires `dbt run` execution to refresh snapshot data.
+
+## 3. Staging Layer: Data Cleaning and Standardization
+
+### 3.1. Introduction to the Staging Layer (`stg_`)
+
+**a) Role and Position in Pipeline**
+* **First Transformation Level:** Positioned directly between the immutable `raw` source layer and downstream modeling layers (`intermediate` / `marts`).
+* **Purpose:** Cleans, formats, and standardizes raw data without altering granular entity definitions or destroying original row-level context.
+
+**b) Multi-Layer Data Flow Architecture**
+* **`Raw` Layer:** Unrefined, raw operational datasets (e.g., duplicate records, inconsistent date formats, missing emails).
+* **`Staging` Layer:** Cleaned and standardized mirror of raw tables (1:1 mapping to source entities with clean data types and renamed fields).
+* **`Intermediate` Layer:** Complex joins, business logic applications, and structural unnesting.
+* **`Marts` Layer:** Aggregated, business-ready dimensional and fact tables for BI and analytics consumption.
+
+**c) Staging Best Practices & Constraints**
+* **No Aggregations:** Never perform `GROUP BY` or summarize metrics in staging models.
+* **No Complex Business Rules:** Avoid applying domain-specific logic or multi-table joins.
+* **Focus Areas:** Type casting, field renaming, null handling, deduplication, and syntax standardization.
+
+### 3.2. Cleaning the Customers Table (`stg_clientes.sql`)
+
+**a) Environment Cleanup & Project Standardization**
+* **Removing Default Boilerplate:** Deleted scaffolded models (`models/example/`) and initial test files (`models/clientes.sql`). Dropped non-relevant database objects (`public.clientes`, `public.my_first_dbt_model`, `public.my_second_dbt_model`) via PostgreSQL CLI/GUI using `DROP CASCADE`.
+* **Directory Scaffolding:** Created the dedicated `models/staging/` directory to house raw-to-staging transformations.
+* **Naming Conventions:** Enforced the `stg_<entity_plural>` naming standard by creating `models/staging/stg_clientes.sql`.
+
+**b) Cleaning & Normalization Rules Applied**
+* **Whitespace Trimming:** Applied `TRIM()` to string columns (`nome_completo`, `cidade`, `estado`, `email`) to purge leading/trailing spaces.
+* **String Case Standardization:** Converted all email strings to lowercase via `LOWER()` and state abbreviations to uppercase using `UPPER()`.
+* **Null Value Handling:** Handled empty strings (`''`) within `email` by remapping them explicitly to SQL `NULL` values.
+* **Data Type Casting:** Standardized raw text dates to proper SQL dates using `CAST(data_cadastro AS DATE)`.
+* **Quality Flag Creation:** Added a boolean flag column (`fl_email_nulo`) to mark records with missing or empty emails (`1` for missing, `0` for valid) for downstream auditing.
+
+**c) Complete Staging Model (`stg_clientes.sql`)**
+
+```sql
+SELECT
+    id_cliente,
+    TRIM(nome_completo) AS nome_completo, -- removing spaces from the name
+    CASE
+        WHEN TRIM(email) = '' THEN NULL -- if email is empty, set it to NULL
+        ELSE LOWER(TRIM(email)) -- convert email to lowercase and remove spaces
+    END AS email,
+    CAST(data_cadastro AS DATE) AS data_cadastro, -- converting to date format
+    TRIM(cidade) AS cidade, -- removing spaces from the city
+    UPPER(TRIM(estado)) AS estado, -- converting state to uppercase and removing spaces
+    CASE
+        WHEN(email IS NULL OR email = '') THEN 1
+        ELSE 0
+    END AS fl_email_nulo -- flagging invalid emails
+FROM
+    raw.clientes
+```
+
+**d) Execution & Verification (`dbt run`)**
+* Executed `dbt run` within the project root directory.
+* Confirmed the successful build of `public.stg_clientes` as a SQL View in PostgreSQL containing standardized, cleaned row-level data.
+
+### 3.3. Cleaning the Products Table (`stg_produtos.sql`)
+
+**a) Data Quality Issues Identified (`raw.produtos`)**
+* **String Contaminants in Numeric Fields:** `preco_unitario` stored as text containing currency symbols (`R$`), leading/trailing whitespaces, and unhandled `NULL` values.
+* **Inconsistent Categorical Text:** `categoria` mixed casing and outer whitespaces.
+* **Unstandardized Boolean Formats:** `ativo` stored heterogeneous string variations representing truthy/falsy values (`true`, `false`, `sim`, `nao`, `s`, `n`, `1`, `0`).
+
+**b) Cleaning & Normalization Strategies Applied**
+* **Currency Symbol & Text Stripping:** Chained `LOWER()`, `TRIM()`, and `REPLACE()` functions to strip `r$` prefixes before casting string values to `NUMERIC`.
+* **CTE Modularization & Null Remapping:** Wrapped initial parsing into a CTE (`select_produtos`) and applied `CASE WHEN preco_unitario IS NULL THEN 0` in the outer query to eliminate missing price values safely.
+* **Boolean Normalization:** Standardized mixed textual representations into strict SQL Booleans (`TRUE`/`FALSE`) using `CASE WHEN LOWER(TRIM(ativo)) IN (...)`.
+* **String Case Uniformity:** Enforced lowercased and trimmed strings on `categoria` and trimmed product names.
+
+**c) Complete Staging Model (`stg_produtos.sql`)**
+
+```sql
+WITH select_produtos AS(	
+	SELECT    
+	    id_produto,
+	    TRIM(nome_produto) AS nome_produto, -- removing spaces from the product name
+	    UPPER(TRIM(categoria)) AS categoria, -- converting category to uppercase and removing spaces
+	    CAST(TRIM(REPLACE(LOWER(TRIM(preco_unitario)), 'r$', '')) AS NUMERIC) AS preco_unitario, -- converting to numeric format
+	    CASE
+	        WHEN LOWER(TRIM(ativo)) IN ('true', '1', 'yes', 's', 'sim') THEN TRUE -- converting to boolean
+	        WHEN LOWER(TRIM(ativo)) IN ('false', '0', 'no', 'n', 'nao', 'não') THEN FALSE -- converting to boolean
+	    ELSE FALSE -- defaulting to FALSE for any other values
+	    END AS ativo
+	FROM raw.produtos
+)
+SELECT id_produto, nome_produto, categoria,
+CASE 
+	WHEN preco_unitario IS NULL THEN 0
+ELSE preco_unitario
+END AS preco_unitario, ativo
+FROM select_produtos
+```
+
+**d) Execution & Database Validation (`dbt run`)**
+* Created `models/staging/stg_produtos.sql` and ran `dbt run` in VS Code terminal.
+* Verified object creation as `public.stg_produtos` View via PostgreSQL query `SELECT * FROM public.stg_produtos;`.
