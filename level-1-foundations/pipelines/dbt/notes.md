@@ -259,28 +259,7 @@ flowchart LR
 * **Data Type Casting:** Standardized raw text dates to proper SQL dates using `CAST(data_cadastro AS DATE)`.
 * **Quality Flag Creation:** Added a boolean flag column (`fl_email_nulo`) to mark records with missing or empty emails (`1` for missing, `0` for valid) for downstream auditing.
 
-**c) Complete Staging Model (`stg_clientes.sql`)**
-
-```sql
-SELECT
-    id_cliente,
-    TRIM(nome_completo) AS nome_completo, -- removing spaces from the name
-    CASE
-        WHEN TRIM(email) = '' THEN NULL -- if email is empty, set it to NULL
-        ELSE LOWER(TRIM(email)) -- convert email to lowercase and remove spaces
-    END AS email,
-    CAST(data_cadastro AS DATE) AS data_cadastro, -- converting to date format
-    TRIM(cidade) AS cidade, -- removing spaces from the city
-    UPPER(TRIM(estado)) AS estado, -- converting state to uppercase and removing spaces
-    CASE
-        WHEN(email IS NULL OR email = '') THEN 1
-        ELSE 0
-    END AS fl_email_nulo -- flagging invalid emails
-FROM
-    raw.clientes
-```
-
-**d) Execution & Verification (`dbt run`)**
+**c) Execution & Verification (`dbt run`)**
 * Executed `dbt run` within the project root directory.
 * Confirmed the successful build of `public.stg_clientes` as a SQL View in PostgreSQL containing standardized, cleaned row-level data.
 
@@ -297,30 +276,57 @@ FROM
 * **Boolean Normalization:** Standardized mixed textual representations into strict SQL Booleans (`TRUE`/`FALSE`) using `CASE WHEN LOWER(TRIM(ativo)) IN (...)`.
 * **String Case Uniformity:** Enforced lowercased and trimmed strings on `categoria` and trimmed product names.
 
-**c) Complete Staging Model (`stg_produtos.sql`)**
-
-```sql
-WITH select_produtos AS(	
-	SELECT    
-	    id_produto,
-	    TRIM(nome_produto) AS nome_produto, -- removing spaces from the product name
-	    UPPER(TRIM(categoria)) AS categoria, -- converting category to uppercase and removing spaces
-	    CAST(TRIM(REPLACE(LOWER(TRIM(preco_unitario)), 'r$', '')) AS NUMERIC) AS preco_unitario, -- converting to numeric format
-	    CASE
-	        WHEN LOWER(TRIM(ativo)) IN ('true', '1', 'yes', 's', 'sim') THEN TRUE -- converting to boolean
-	        WHEN LOWER(TRIM(ativo)) IN ('false', '0', 'no', 'n', 'nao', 'não') THEN FALSE -- converting to boolean
-	    ELSE FALSE -- defaulting to FALSE for any other values
-	    END AS ativo
-	FROM raw.produtos
-)
-SELECT id_produto, nome_produto, categoria,
-CASE 
-	WHEN preco_unitario IS NULL THEN 0
-ELSE preco_unitario
-END AS preco_unitario, ativo
-FROM select_produtos
-```
-
-**d) Execution & Database Validation (`dbt run`)**
+**c) Execution & Database Validation (`dbt run`)**
 * Created `models/staging/stg_produtos.sql` and ran `dbt run` in VS Code terminal.
 * Verified object creation as `public.stg_produtos` View via PostgreSQL query `SELECT * FROM public.stg_produtos;`.
+
+### 3.4. Cleaning the Orders Table (`stg_pedidos.sql`)
+
+**a) Inconsistencies & Quality Issues Identified (`raw.pedidos`)**
+* **Unstandardized String Dates:** `data_pedido` stored as plain text with heterogeneous date formats (`YYYY-MM-DD`, `DD-MM-YYYY`), varying delimiters (`/`, `-`), and unhandled missing records.
+* **Categorical String Variations:** `status` contained mixed case strings (`complete` vs `Complete`), plural/singular spelling differences (`canceled` vs `cancelled`), and blank/null entries.
+* **Payment Method Formatting:** `forma_pagamento` included inconsistent formatting (`Credit Card` vs `credit_card`), space-delimited text, and missing values.
+
+**b) Cleaning & Normalization Strategies Applied**
+* **Regex Parsing & Delimiter Unification:** Utilized PostgreSQL Regex matching (`~`) to catch date structure patterns (`^\d{4}[-/]\d{2}[-/]\d{2}$` and `^\d{2}[-/]\d{2}[-/]\d{4}$`). Unified `/` delimiters to `-` using `REPLACE()` prior to calling `TO_DATE()`.
+* **Sentinel Date Assignment (`COALESCE`):** Handled unparseable or missing date values by defaulting to a standard sentinel date (`1900-01-01`).
+* **Categorical Normalization:** Mapped string variations to standard enums (`canceled`, `completed`, `credit_card`) using `LOWER()`, `TRIM()`, and `IN (...)` conditions. Assigned `'undefined'` to null or empty string fields.
+* **dbt Syntax Constraints:** Omitted trailing SQL semicolons (`;`) in `.sql` model files to avoid Jinja compilation syntax errors.
+
+**c) Execution & Verification (`dbt run -s stg_pedidos`)**
+* Target execution using model selector (`-s stg_pedidos`).
+* Confirmed the successful build of `public.stg_pedidos` View in PostgreSQL with normalized dates and clean categorical mappings.
+
+### 3.5. Cleaning the Order Items Table (`stg_itens_pedido.sql`)
+
+**a) Data Quality Issues Identified (`raw.itens_pedido`)**
+* **Invalid & Non-Positive Quantities:** `quantidade` contained zero (`0`) and negative (`-1`) values representing invalid transaction records.
+* **Numeric Fields Stored as Contaminated Text:** Both `preco_unitario` and `desconto` contained text characters, symbols, and irregular separators, preventing direct casting to numeric types.
+* **Unhandled Nulls & Free Unit Prices:** `preco_unitario` contained missing values and zero-priced items (`0`), which are invalid for sales records.
+
+**b) Cleaning & Normalization Strategies Applied**
+* **Regex Sanitation & Numeric Casting:** Applied `REGEXP_REPLACE(field, '[^0-9.]', '', 'g')` to strip all non-numeric characters except decimal points, then cast the resulting text to `NUMERIC`.
+* **Null Fallbacks (`COALESCE`):** Wrapped unit prices and discounts with `COALESCE(..., 0)` to default missing values to `0`.
+* **Quantity Normalization:** Remapped negative or zero quantities (`quantidade <= 0`) to `0` using conditional `CASE` logic.
+* **CTE Scaffolding for Safe Flag Creation:** Structured transformations using a Common Table Expression (`select_itens_pedido`) to execute type casting *before* evaluating boolean flags (`fl_quantidade_invalida`, `fl_preco_unitario_nulo`) in the outer query, avoiding type-mismatch compilation errors.
+* **dbt Source Reference (`{{ source(...) }}`):** Replaced hardcoded schema table references (`raw.itens_pedido`) with Jinja source macros (`{{ source('dbt_curso', 'itens_pedido') }}`).
+
+**c) Execution & Verification (`dbt run -s stg_itens_pedido`)**
+* Executed the isolated model build using `dbt run -s stg_itens_pedido`.
+* Confirmed the successful creation of `public.stg_itens_pedido` View in PostgreSQL, verifying clean numeric types, zero-defaulted nulls, and active quality flags via `SELECT * FROM public.stg_itens_pedido;`.
+
+### 3.6. Productivity Tip: Dynamic Column Name Extraction
+
+**a) Accelerating Model Scaffold Creation**
+* **Context:** Instead of manually typing or copy-pasting column names from heavy raw tables into new dbt staging models, SQL system catalog queries can be used to generate a pre-formatted, comma-separated column list.
+
+**b) PostgreSQL Information Schema Query**
+
+```sql
+SELECT string_agg(column_name, ', ') AS colunas
+FROM information_schema.columns 
+WHERE table_schema = 'raw' 
+  AND LOWER(table_name) = 'itens_pedido';
+```
+
+* **Utility:** Produces a single string containing all attribute names formatted directly for instant pasting into `SELECT` statements within `.sql` files.
