@@ -330,3 +330,87 @@ WHERE table_schema = 'raw'
 ```
 
 * **Utility:** Produces a single string containing all attribute names formatted directly for instant pasting into `SELECT` statements within `.sql` files.
+
+### 3.7. Deep Dive: Regular Expressions (Regex) in PostgreSQL
+
+**a) Regex Operators & Match Logic**
+* **POSIX Operators:** Uses `~` (case-sensitive match) and `!~` (does not match) to evaluate pattern matching directly within SQL expressions.
+* **Boolean Return Value:** POSIX operators evaluate to Booleans, making them ideal for conditional branching inside `CASE WHEN` blocks.
+* **Regex Symbols Applied:**
+  * `^`: Anchor matching to start of string.
+  * `$`: Anchor matching to end of string.
+  * `\d{N}`: Expect exactly `N` numeric digits.
+  * `[-/]`: Character set matching either `-` or `/` separators.
+
+**b) Operator Comparison: POSIX (`~`) vs `SIMILAR TO`**
+* **POSIX (`~` Operator):** Maximum pattern matching flexibility, high execution control, standard regex syntax support. Best for complex data validation.
+* **`SIMILAR TO` Operator:** Hybrid syntax blending standard SQL wildcards (`%`, `_`) with regex subset logic. More readable for basic patterns, but less expressive for advanced validation.
+
+**c) Performance & Query Optimization Constraints**
+* **Computation Cost:** Heavy regex scanning on unindexed millions of text rows can slow down query response times.
+* **Optimization Best Practices:** Combine regex validation with pre-filtering guards (e.g., string length filters via `LENGTH()`) or construct Functional GIN/B-Tree Indexes on frequently evaluated text columns where appropriate.
+
+## 4. Modern Data Transformations: Intermediate & Analytical Modeling
+
+### 4.1. Introduction to the Intermediate Layer (`int_`)
+
+**a) Strategic Role and Position in Pipeline**
+* **Analytical Integration Level:** Positioned between standardized staging models (`stg_`) and consumption-ready data marts (`marts`).
+* **Core Purpose:** Consolidates entity relationships, executes multi-table joins, applies cross-table filtration using staging quality flags, and unifies fragmented transactional datasets without exposing premature aggregations to end-users.
+
+**b) Scaffolding & Naming Conventions**
+* **Directory Scaffolding:** Created the dedicated `models/intermediate/` directory directly under `models/` alongside `staging/`.
+* **Naming Conventions:** Standardized using the `int_<entity1>_<entity2>` pattern by creating `models/intermediate/int_pedidos_itens_pedido.sql`.
+
+**c) Data Quality Filtering & Relational Joins**
+* **Primary Key/Foreign Key Linking:** Joined `stg_pedidos` ($p$) to `stg_itens_pedido` ($i$) using `INNER JOIN` on `p.id_pedido = i.id_pedido`.
+* **Audit Flag Enforcement:** Excluded dirty transactional lines from intermediate results by enforcing `WHERE i.fl_quantidade_invalida = 0 AND i.fl_preco_unitario_nulo = 0`.
+
+**d) dbt DAG Dependency Lineage (`{{ ref(...) }}`)**
+* **Explicit Lineage:** Replaced hardcoded PostgreSQL schema relations (`public.stg_pedidos`) with Jinja `{{ ref('stg_pedidos') }}` macros.
+* **DAG Scheduling:** Guarantees that dbt compiles the Directed Acyclic Graph (DAG) to execute upstream staging builds before initiating intermediate transformations.
+
+**e) Execution & Database Verification (`dbt run`)**
+* Executed `dbt run` within the VS Code terminal to build `public.int_pedidos_itens_pedido`.
+* Validated table creation via PostgreSQL query `SELECT * FROM public.int_pedidos_itens_pedido;`.
+
+### 4.2. Metric Calculations at Item Granularity (`int_pedidos_itens_pedido.sql`)
+
+**a) Business Logic & Formula Definitions**
+* **Gross Item Value (`valor_bruto`):** Calculates gross sales revenue before adjustments using the formula:
+  $$\text{valor\_bruto} = \text{quantidade} \times \text{preco\_unitario}$$
+* **Net Item Value (`valor_liquido`):** Calculates actual revenue generated after applying order discounts using the formula:
+  $$\text{valor\_liquido} = (\text{quantidade} \times \text{preco\_unitario}) - \text{desconto}$$
+
+**b) Granularity & Architectural Context**
+* **Row-Level Metrics:** Derived calculations are computed at the transactional item granularity (`id_pedido` + `id_produto`) prior to applying downstream aggregations in the Marts layer.
+* **Feature Enrichment:** Pre-calculating revenue primitives in the intermediate layer simplifies downstream sum aggregations and maintains modular, DRY (Don't Repeat Yourself) SQL standards.
+
+**c) Execution & Verification (`dbt run -s int_pedidos_itens_pedido`)**
+* Executed target build with model selector: `dbt run -s int_pedidos_itens_pedido`.
+* Validated table enrichment in PostgreSQL via `SELECT * FROM public.int_pedidos_itens_pedido;`, confirming correct calculation of `valor_bruto` and `valor_liquido`.
+
+### 4.3. Deduplication & Order-Level Aggregation (`int_pedidos.sql`)
+
+**a) Handling Granularity & Fan-out Issues**
+* **Granularity Shift:** Transitions dataset grain from item-level (`id_pedido` + `id_produto`) to order-level (`id_pedido`).
+* **Fan-out Prevention:** Resolves item duplicate rows per order when calculating aggregate order metrics, avoiding inflated totals in downstream reporting.
+
+**b) Aggregation Logic & Column Definitions**
+* **Total Gross Order Value (`valor_bruto_total`):** Sums item-level gross revenue per order:
+  $$\text{valor\_bruto\_total} = \sum (\text{valor\_bruto})$$
+* **Total Net Order Value (`valor_liquido_total`):** Sums item-level net revenue per order:
+  $$\text{valor\_liquido_total} = \sum (\text{valor\_liquido})$$
+* **Grouping Dimensions:** Groups aggregated metrics across non-aggregated attributes: `id_pedido`, `id_cliente`, `data_pedido`, and `status`.
+
+**c) Multilevel DAG Lineage & Dependency Propagation**
+* **Model Reference:** Connects `int_pedidos` directly to upstream intermediate model `int_pedidos_itens_pedido` using `{{ ref('int_pedidos_itens_pedido') }}`.
+* **Lineage Chain:** Formulates multi-tiered dependency hierarchy: `stg_pedidos` + `stg_itens_pedido` $\rightarrow$ `int_pedidos_itens_pedido` $\rightarrow$ `int_pedidos`.
+
+**d) Analytical Performance & Use-Case Dualism**
+* **Detailed Model (`int_pedidos_itens_pedido`):** Maintained for item-level analysis (e.g., product sales volume, item discount distributions).
+* **Aggregated Model (`int_pedidos`):** Optimized for high-level order performance metrics (e.g., total order revenue, customer spending, daily sales totals) while significantly lowering scan costs for downstream BI tools and Marts.
+
+**e) Execution & Verification (`dbt run -s int_pedidos`)**
+* Executed target build with model selector: `dbt run -s int_pedidos`.
+* Verified order consolidation in PostgreSQL via `SELECT * FROM public.int_pedidos;`.
