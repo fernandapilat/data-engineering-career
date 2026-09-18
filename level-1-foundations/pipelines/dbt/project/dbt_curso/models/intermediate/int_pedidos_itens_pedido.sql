@@ -12,8 +12,8 @@ SELECT
     i.desconto,
 
     -- Calculate the total value of the item (quantity * unit price)
-    (i.quantidade * i.preco_unitario) AS valor_bruto,
-    (i.quantidade * i.preco_unitario) - i.desconto AS valor_liquido
+    {{ calculo_dois_valores('i.quantidade', 'i.preco_unitario') }} AS valor_bruto,
+    {{ calculo_dois_valores('i.quantidade', 'i.preco_unitario') }} - i.desconto AS valor_liquido
 
 
 -- Reference the staging orders model (dbt ref macro builds the DAG dependency)

@@ -414,3 +414,61 @@ WHERE table_schema = 'raw'
 **e) Execution & Verification (`dbt run -s int_pedidos`)**
 * Executed target build with model selector: `dbt run -s int_pedidos`.
 * Verified order consolidation in PostgreSQL via `SELECT * FROM public.int_pedidos;`.
+
+### 4.4. DRY Code Reusability with dbt Macros
+
+**a) Strategic Role of dbt Macros**
+* **DRY Paradigm (Don't Repeat Yourself):** Centralizes recurring SQL expressions and calculation logic into Jinja-templated modular functions inside the `macros/` directory.
+* **Standardization & Governance:** Mitigates human error across teams by ensuring complex KPI formulas (e.g., metric calculations and aggregations) remain consistent throughout the pipeline lifecycle.
+
+**b) Custom Macro Implementations**
+
+* **`calculo_dois_valores` (`macros/calculo_dois_valores.sql`):** Encapsulates row-level multiplication logic with parameter precedence wrapper:
+  $$\text{macro}(v_1, v_2) \rightarrow (v_1) \times (v_2)$$
+
+* **`agregacao_soma` (`macros/agregacao_soma.sql`):** Standardizes field-level summation syntax:
+  $$\text{macro}(\text{field}) \rightarrow \text{SUM}(\text{field})$$
+
+**c) Model Refactoring Strategy**
+
+* **`int_pedidos_itens_pedido.sql` Integration:** Replaced inline scalar multiplication with `{{ calculo_dois_valores('i.quantidade', 'i.preco_unitario') }}` for computing `valor_bruto` and `valor_liquido`.
+* **`int_pedidos.sql` Integration:** Replaced direct `SUM()` calls with `{{ agregacao_soma('valor_bruto') }}` and `{{ agregacao_soma('valor_liquido') }}`.
+
+**d) Trade-offs & Governance Best Practices**
+* **Maintainability Advantage:** Modifying logic within a single macro automatically propagates changes across all referencing models upon re-compilation.
+* **Complexity Guardrail:** Macros should be used judiciously to avoid over-abstracting simple SQL operations, striking a balance between readability and centralization.
+
+**e) Execution & Verification (`dbt run`)**
+* Executed total project compilation using `dbt run`.
+* Confirmed clean DAG execution and output accuracy in PostgreSQL for both intermediate tables.
+
+### 4.5. Analytical Marts Layer Implementation (`marts/`)
+
+**a) Strategic Role & Dimensional Modeling Architecture**
+* **Marts Layer Positioning:** Final consumption-ready serving layer optimized for BI tools, executive dashboards, and ad-hoc analytical queries.
+* **Kimball Dimensional Modeling Paradigm:**
+  * **Fact Tables (`fct_`):** Capture quantitative measurements of business transactions and operational events (e.g., orders and line items).
+  * **Dimension Tables (`dim_`):** Contextualize business entities with descriptive attributes (e.g., customers and products).
+
+**b) Materialization Strategy**
+* **Physical Tables vs. Views:** Overrode default view materializations by setting `{{ config(materialized='table') }}` across all Mart models.
+* **Performance Rationale:** Persisting analytical models as physical database tables eliminates runtime join/aggregation overhead for end-user queries.
+
+**c) Model Specifications**
+
+* **Fact Models (`models/marts/`):**
+  * **`fct_pedidos.sql`:** Sourced from `{{ ref('int_pedidos') }}`. Exposes order-level attributes and consolidated financial totals (`valor_bruto_total`, `valor_liquido_total`).
+  * **`fct_itens_pedido.sql`:** Sourced from `{{ ref('int_pedidos_itens_pedido') }}`. Captures granular item transaction attributes, price point breakdowns, applied discounts, and item-level revenue metrics (`valor_bruto`, `valor_liquido`).
+
+* **Dimension Models (`models/marts/`):**
+  * **`dim_clientes.sql`:** Sourced from `{{ ref('stg_clientes') }}`. Exposes clean customer profiles (`id_cliente`, `nome_completo`, `email`, `cidade`, `estado`).
+  * **`dim_produtos.sql`:** Sourced from `{{ ref('stg_produtos') }}`. Exposes master product attributes (`id_produto`, `nome_produto`, `categoria`, `preco_unitario`, `ativo`).
+
+**d) Schema Validation & Troubleshooting**
+* **Case Sensitivity Guardrail:** Fixed Jinja ref case mismatch from `{{ ref('stg_Produtos') }}` to lower-case `{{ ref('stg_produtos') }}`.
+* **Typographical Corrections:** Sanitized SQL identifier typos in `fct_itens_pedido` (`descoto` $\rightarrow$ `desconto`, `valir_bruto` $\rightarrow$ `valor_bruto`).
+* **Column Name Alignment:** Aligned schema contract between `stg_produtos` and `dim_produtos` by selecting `preco_unitario` instead of non-existent `preco`.
+
+**e) Execution & Database Verification (`dbt run`)**
+* Executed full project build via `dbt run`.
+* Verified materialization behavior in PostgreSQL: intermediate and staging models persist as views, while Marts persist as physical tables inside `public`.
