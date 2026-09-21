@@ -3,3 +3,8 @@
 
 **/macros/*.sql linguist-language=Jinja
 **/macros/**/*.sql linguist-language=Jinja
+
+*.yml linguist-detectable=true
+*.yml linguist-language=YAML
+*.yaml linguist-detectable=true
+*.yaml linguist-language=YAML

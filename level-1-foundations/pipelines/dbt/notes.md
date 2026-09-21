@@ -472,3 +472,75 @@ WHERE table_schema = 'raw'
 **e) Execution & Database Verification (`dbt run`)**
 * Executed full project build via `dbt run`.
 * Verified materialization behavior in PostgreSQL: intermediate and staging models persist as views, while Marts persist as physical tables inside `public`.
+
+## 5. Data Quality & Automated Testing in dbt
+
+### 5.1. Generic Tests & Data Assertions (`schema.yml`)
+
+**a) Strategic Role of Testing in dbt**
+* **Automated Data Quality Assertions:** Replaces manual query verification with automated quality gates declared directly alongside models.
+* **Declarative YAML Configurations:** Configured inside `schema.yml` metadata files within model folders (`models/staging/schema.yml`) using YAML syntax rather than raw SQL transformation logic.
+
+**b) Built-in Generic Test Types & Specifications**
+* **`not_null` Test:** Asserts that every record in a target column contains non-null values, identifying missing primary identifiers or data extraction failures.
+* **`unique` Test:** Asserts that all values in a designated primary key or unique identifier column are distinct, catching duplicate records and joins fan-out anomalies.
+
+**c) Schema Configuration Structure (`models/staging/schema.yml`)**
+
+```yaml
+models:
+  - name: stg_clientes
+    columns:
+      - name: id_cliente
+        tests:
+          - not_null
+          - unique
+```
+
+**d) Non-Blocking Execution Nature & Workflow Lifecycle**
+* **`dbt test` Command:** Compiles configured tests into assertion SQL queries (evaluating whether bad row counts > 0) and executes them against target relations.
+* **Execution Decoupling:** Failing a `dbt test` assertion flags data quality issues in logs but does not retroactively halt or rollback completed `dbt run` model builds unless integrated with strict CI/CD pipeline triggers.
+
+**e) Failure Simulation, Debugging & Verification**
+* **`not_null` Failure:** Simulated by inserting an explicit `NULL` primary key into `raw.clientes`; caught instantly by `dbt test` on `stg_clientes.id_cliente`.
+* **`unique` Failure:** Simulated by inserting duplicate records with `id_cliente = 12`; caught by the `unique` test block.
+* **Remediation & Re-test:** Executed target database cleanup on `raw.clientes` and re-ran `dbt test`, achieving clean test assertion passes across staging models.
+
+## 5.2. Foreign Key & Relationship Integrity Testing
+
+**a) Relationship Tests & Referential Integrity**
+* **Referential Integrity Enforcement:** Validates cross-table key dependencies directly within dbt models without relying on rigid database-level foreign key constraints.
+* **`relationships` Test Type:** Asserts that every non-null value in a model's foreign key column matches an existing primary key value in the referenced model.
+
+**b) YAML Syntax & Indentation Requirements**
+* **Arguments Block Structure:** Requires precise block indentation under `relationships` to declare reference parameters (`to` and `field`).
+* **Parameter Definitions:**
+  * **`to`:** Specifies the target reference model using Jinja syntax: `ref('stg_clientes')`.
+  * **`field`:** Designates the target primary key column in the referenced model (`id_cliente`).
+
+**c) Simulated Data Violation, Execution & Remediation**
+* **Violation Simulation:** Inserted an invalid order record (`id_pedido = 1056`) with a non-existent customer key (`id_cliente = 999999`) into `raw.pedidos`.
+* **Failure Detection:** Executing `dbt test` compiled an assertion query calculating orphan foreign keys, returning bad row count > 0 and triggering an immediate test failure report.
+* **Remediation & Resolution:** Deleted the orphan record from `raw.pedidos` using `DELETE FROM raw.pedidos WHERE id_cliente = 999999;` and executed `dbt test` to achieve clean verification.
+
+## 5.3. Static Seeds & Categorical Value Testing
+
+### a) Strategic Role & Functionality of dbt Seeds
+* **Static Reference Data Management:** Loads local CSV files into target database schemas as physical tables (`public.status_mapeamento`) via `dbt seed`.
+* **Version-Controlled Domain Maps:** Version-controls small lookup datasets (e.g., status definitions, postal code mappings) directly inside the repository (`seeds/status-mapeamento.csv`) to prevent external schema drift.
+
+### b) Seed Creation & Materialization Lifecycle
+* **Source CSV Setup (`seeds/status-mapeamento.csv`):** Standardized status values and Portuguese descriptions.
+
+* **Seed Execution (`dbt seed`):** Compiles and persists the CSV as a physical database table (`status_mapeamento`).
+
+### c) Mart Integration & Inner Domain Filtering (`models/marts/dim_status.sql`)
+* **Filtering Inactive Reference Categories:** Joined `fct_pedidos` against `status_mapeamento` via `LEFT JOIN` to restrict domain values to active transaction categories, filtering out unreferenced categories like `return`.
+
+### d) Generic Domain Testing (`accepted_values`)
+* **Categorical Domain Assertions:** Implemented the `accepted_values` generic test in `models/marts/schema.yml` to ensure order status values adhere strictly to defined enum boundaries.
+
+### e) Execution Coupling, DAG Lineage & Test Verification
+* **Materialization Coupling:** Testing physical tables requires running `dbt run` before `dbt test` to ensure new database writes are reflected in target relations.
+* **Granularity Dependency:** Simulated invalid status (`erro_teste`) on an order header (`id_pedido = 1056`). The record was initially filtered out due to the inner join dependency between `int_pedidos` and `int_pedidos_itens_pedido`.
+* **Lineage Resolution & Cleanup:** Added line item `id_item_pedido = 99999` to propagate the invalid record through the DAG, triggering expected `dbt test` failure. Deleted test rows from `raw.itens_pedido` and `raw.pedidos`, re-running `dbt run` and `dbt test` to achieve a fully clean build.

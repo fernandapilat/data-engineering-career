@@ -1,0 +1,17 @@
+# Configuration block for dbt models
+models:
+  # Name of the fact model for orders data
+  - name: fct_pedidos
+    # List of column-level test definitions and documentation
+    columns:
+      # Column representing the lifecycle state of an order
+      - name: status
+        # Human-readable description for documentation
+        description: "Status of the order"
+        # Data quality tests applied to this column
+        tests:
+          # Custom list validation test ensuring values match predefined allowed states
+          - accepted_values:
+              arguments:
+                # Allowed categorical values for the status field
+                values: ["undefined", "refunded", "paid", "shipped", "completed", "processing", "canceled"]
