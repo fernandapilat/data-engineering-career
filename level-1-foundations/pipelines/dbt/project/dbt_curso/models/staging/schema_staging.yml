@@ -1,0 +1,155 @@
+version: 2
+
+models:
+
+  # ==========================================
+  # STAGING - CUSTOMERS
+  # ==========================================
+
+  # Staging model for cleaning and standardizing customer raw data
+  - name: stg_clientes
+    description: "Staging model responsible for cleaning and standardizing customer data."
+
+    columns:
+      # Primary key definition
+      - name: id_cliente
+        description: "Unique identifier for the customer."
+        tests:
+          - not_null
+          - unique
+
+      # Cleaned text fields
+      - name: nome_completo
+        description: "Customer's full name with trimmed whitespace."
+
+      - name: email
+        description: "Customer's email address lowercased; empty values are converted to null."
+
+      # Type casting
+      - name: data_cadastro
+        description: "Customer registration date cast to date type."
+
+      - name: cidade
+        description: "Customer's city with trimmed whitespace."
+
+      - name: estado
+        description: "Customer's state/province code standardized in uppercase."
+
+      # Data quality indicator flag
+      - name: fl_email_nulo
+        description: "Flag indicating whether the email was null or empty in the raw source."
+
+
+  # ==========================================
+  # STAGING - PRODUCTS
+  # ==========================================
+
+  # Staging model for cleaning and standardizing product catalog data
+  - name: stg_produtos
+    description: "Staging model responsible for cleaning and standardizing product data."
+
+    columns:
+      # Primary key definition
+      - name: id_produto
+        description: "Unique identifier for the product."
+        tests:
+          - not_null
+          - unique
+
+      # Cleaned descriptive fields
+      - name: nome_produto
+        description: "Product name with trimmed whitespace."
+
+      - name: preco
+        description: "Product price cast to numeric type."
+
+      # Data quality indicator flag
+      - name: fl_preco_nulo
+        description: "Flag indicating whether the price was null or empty in the raw source."
+
+      - name: categoria
+        description: "Product category standardized in lowercase."
+
+      - name: ativo
+        description: "Indicates whether the product is active, cast to boolean type."
+
+
+  # ==========================================
+  # STAGING - ORDERS
+  # ==========================================
+
+  # Staging model for cleaning and standardizing order header data
+  - name: stg_pedidos
+    description: "Staging model responsible for cleaning and standardizing order data."
+
+    columns:
+      # Primary key definition
+      - name: id_pedido
+        description: "Unique identifier for the order."
+        tests:
+          - not_null
+
+      # Foreign key referencing staging customer model
+      - name: id_cliente
+        description: "Unique identifier for the customer associated with the order."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_clientes')
+                field: id_cliente
+
+      # Standardized date and categorical values
+      - name: data_pedido
+        description: "Order date cast to date type, standardized across diverse source formats."
+
+      - name: status
+        description: "Order status standardized in lowercase with equivalent terms normalized."
+
+      - name: forma_pagamento
+        description: "Payment method standardized in lowercase; null or empty values default to 'undefined'."
+
+
+  # ==========================================
+  # STAGING - ORDER ITEMS
+  # ==========================================
+
+  # Staging model for cleaning and standardizing line-item granular data
+  - name: stg_itens_pedido
+    description: "Staging model responsible for cleaning and standardizing order item data."
+
+    columns:
+      # Primary key definition
+      - name: id_item_pedido
+        description: "Unique identifier for the order item."
+        tests:
+          - not_null
+
+      # Foreign key referencing staging order model
+      - name: id_pedido
+        description: "Unique identifier for the associated order."
+        tests:
+          - not_null
+
+      # Foreign key referencing staging product model
+      - name: id_produto
+        description: "Unique identifier for the associated product."
+        tests:
+          - not_null
+
+      # Quantitative and financial metrics
+      - name: quantidade
+        description: "Quantity of products included in the order item."
+
+      - name: preco_unitario
+        description: "Unit price cast to numeric type."
+
+      - name: desconto
+        description: "Discount amount cast to numeric type; null values are treated as zero."
+
+      # Data quality indicator flags
+      - name: fl_quantidade_invalida
+        description: "Flag indicating whether the quantity was null, zero, or negative in the source."
+
+      - name: fl_preco_unitario_nulo
+        description: "Flag indicating whether the unit price was null or empty in the raw source."

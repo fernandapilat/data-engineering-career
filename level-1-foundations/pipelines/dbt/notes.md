@@ -544,3 +544,81 @@ models:
 * **Materialization Coupling:** Testing physical tables requires running `dbt run` before `dbt test` to ensure new database writes are reflected in target relations.
 * **Granularity Dependency:** Simulated invalid status (`erro_teste`) on an order header (`id_pedido = 1056`). The record was initially filtered out due to the inner join dependency between `int_pedidos` and `int_pedidos_itens_pedido`.
 * **Lineage Resolution & Cleanup:** Added line item `id_item_pedido = 99999` to propagate the invalid record through the DAG, triggering expected `dbt test` failure. Deleted test rows from `raw.itens_pedido` and `raw.pedidos`, re-running `dbt run` and `dbt test` to achieve a fully clean build.
+
+## 5.4. Preserving Historical Changes with dbt Snapshots (SCD Type 2)
+
+### a) Slowly Changing Dimensions (SCD Type 2) Architecture
+* **Historical State Preservation:** Prevents source system overwrites from distorting historical reporting metrics (e.g., retroactively reattaching past revenue to a customer's new location) by creating new record versions upon attribute changes.
+* **Temporal Validity Tracking:** Tracks entity life cycles over time using system-managed validity boundary timestamps (`dbt_valid_from` and `dbt_valid_to`).
+
+### b) Snapshot Configuration Structure (`snapshots/snap_clientes.sql`)
+* **Strategy Selection:** Implements the `check` strategy to monitor changes across a specific subset of columns (`nome_completo`, `cidade`, `estado`).
+* **Target Management:** Materializes output records directly inside the dedicated target database schema `snapshots`.
+
+SELECT * FROM {{ ref('stg_clientes') }}
+
+{% endsnapshot %}
+
+### c) Execution Lifecycle & Mutation Simulation
+* **Initial Population (`dbt snapshot`):** Generates baseline target table `snapshots.snap_clientes`, setting initial row validity timestamps (`dbt_valid_from` = run timestamp, `dbt_valid_to` = `NULL`).
+* **Source Mutation:** Executed demographic update on primary key `id_cliente = 1` in `raw.clientes`:
+
+```sql
+UPDATE raw.clientes
+SET cidade = 'Rio de Janeiro', 
+    estado = 'RJ'
+WHERE id_cliente = 1;
+```
+
+* **Delta Detection & Versioning:** Running `dbt snapshot` flagged attribute changes against monitored `check_cols`. Automatically updated the prior active record's `dbt_valid_to` timestamp and appended a new active version (`dbt_valid_to` IS `NULL`) to maintain total historical auditability.
+
+## 5.5. Pipeline Observability & Logging Layer (`logs/dbt.log`)
+
+### a) Strategic Role of dbt Logging
+* **Operational Observability:** Captures low-level internal engine activities, compilation steps, target database metadata queries, and exact SQL execution payloads sent to PostgreSQL.
+* **Troubleshooting & Root Cause Analysis:** Serves as the primary audit trail for diagnosing compilation failures, database lock contention, schema resolution errors, and performance bottlenecks.
+
+### b) Log Lifecycle & Storage Mechanics
+* **Location & Persistence:** Auto-generated and maintained inside the workspace root under `logs/dbt.log`.
+* **Stateless Recreation:** The logging process is self-healing; deleting `logs/dbt.log` causes dbt to automatically re-instantiate the file upon the next CLI invocation (`dbt run`, `dbt test`, `dbt seed`, etc.).
+
+### c) Execution Tracing & Debugging Modes (`--debug`)
+* **Standard Logging (`dbt run`):** Streams concise execution status to the terminal stdout while appending standard operational metrics and queries to `logs/dbt.log`.
+* **Verbose Tracing (`dbt run --debug`):**
+  * Forces maximum verbosity in both CLI output and `logs/dbt.log`.
+  * Outputs exact raw DDL/DML SQL strings, active connection parameters, session initialization queries, and internal Jinja evaluation traces for granular debugging.
+
+```bash
+# Force verbose tracing and detailed SQL payload logging
+dbt run --debug
+```
+
+## 5.6. Deep Dive: Test Behavior across Materializations (Tables vs. Views)
+
+### a) Dynamic Queries vs. Static Snapshots
+* **Views (`materialized='view'`):** Act as dynamic SQL queries. Test execution (`dbt test`) queries underlying source relations in real-time, validating live data state without requiring intermediate compilation or rebuild steps.
+* **Tables (`materialized='table'`):** Persist static physical data copies at build time. Test assertions evaluate static database state captured during the previous `dbt run` execution.
+
+### b) Execution Ordering & Pipeline Risks
+* **Stale Data Fallacy:** Running `dbt test` against physical table materializations after upstream database mutations evaluates historical state rather than active values, creating false-positive quality passes.
+* **Orchestration Standard:** Enforces mandatory execution ordering in production DAG pipelines:
+
+**PowerShell (Windows) - Executa o teste apenas se o run for bem-sucedido:**
+
+```
+dbt run; dbt test  
+```
+
+### c) Governance Best Practices across Layers
+* **Layer-Specific Testing Strategy:**
+  * **Staging / Intermediate (Views):** Apply early quality checks (`not_null`, `unique`, `relationships`) to catch source logic defects before materialization overhead.
+  * **Marts (Tables):** Re-verify analytical rules (`accepted_values`, business logic constraints) to guarantee data accuracy post-materialization.
+
+## Module 6: Project Documentation & Execution
+
+### 6.1. Comprehensive Project Documentation Architecture (`schema.yml`)
+
+#### a) Strategic Role & Standardization of Documentation
+* **Metadata & Data Lineage Governance:** Centralizes semantic model definitions, entity relationships, and column-level descriptions alongside generic test suite assertions inside repository-tracked `.yml` configurations.
+* **Format Specification:** Adheres strictly to dbt specification `version: 2` across all YAML declaration manifests.
+* **Static Compilation Integrity (`dbt parse`):** Utilizes `dbt parse` to validate YAML syntax, model dependencies, Jinja compilations, and schema linkages without invoking target database queries.

@@ -1,0 +1,85 @@
+version: 2
+
+models:
+
+  # ==========================================
+  # INTERMEDIATE - ORDERS + ITEMS
+  # ==========================================
+  
+  # Intermediate model joining order headers with line items at the item grain
+  - name: int_pedidos_itens_pedidos
+    description: "Intermediate model combining orders and order items, providing line-item level granularity."
+
+    columns:
+      # Foreign keys and order headers
+      - name: id_pedido
+        description: "Unique identifier for the order."
+        tests:
+          - not_null
+
+      - name: id_cliente
+        description: "Unique identifier for the customer."
+        tests:
+          - not_null
+
+      - name: data_pedido
+        description: "Date when the order was placed."
+
+      - name: status
+        description: "Normalized and standardized order status."
+
+      # Product reference
+      - name: id_produto
+        description: "Unique identifier for the product."
+        tests:
+          - not_null
+
+      # Item-level measures and calculations
+      - name: quantidade
+        description: "Quantity of items included in the order."
+
+      - name: preco_unitario
+        description: "Unit price of the product."
+
+      - name: desconto
+        description: "Discount value applied to the line item."
+
+      - name: valor_bruto
+        description: "Gross value of the line item (quantity x unit price)."
+
+      - name: valor_liquido
+        description: "Net value of the line item after applying discounts."
+
+
+  # ==========================================
+  # INTERMEDIATE - AGGREGATED ORDERS
+  # ==========================================
+  
+  # Intermediate model aggregating order metrics back to the order-header level
+  - name: int_pedidos
+    description: "Intermediate model aggregating order items up to the order level, consolidating total metrics."
+
+    columns:
+      # Grain identifier
+      - name: id_pedido
+        description: "Unique identifier for the order."
+        tests:
+          - not_null
+
+      - name: id_cliente
+        description: "Unique identifier for the customer associated with the order."
+        tests:
+          - not_null
+
+      - name: data_pedido
+        description: "Date when the order was placed."
+
+      - name: status
+        description: "Normalized order status."
+
+      # Aggregated financial metrics
+      - name: valor_bruto_total
+        description: "Sum of gross values across all items in the order."
+
+      - name: valor_liquido_total
+        description: "Sum of net values across all items in the order."

@@ -1,0 +1,180 @@
+version: 2
+
+models:
+
+# ==========================================
+# FACT - ORDERS
+# ==========================================
+
+  # Fact model for order-level metrics and headers
+  - name: fct_pedidos
+    description: "Fact table with consolidated order information, containing aggregated metrics per order."
+    
+    columns:
+      # Primary key definition
+      - name: id_pedido
+        description: "Unique identifier for the order."
+        tests:
+          - not_null
+          - unique
+          
+      # Foreign key referencing customer dimension
+      - name: id_cliente
+        description: "Unique identifier for the customer associated with the order."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_clientes')
+                field: id_cliente
+                
+      # Order creation date
+      - name: data_pedido
+        description: "Date when the order was placed."
+        
+      # Categorical order lifecycle state
+      - name: status
+        description: "Lifecycle status of the order."
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['undefined','refunded','paid','shipped','completed','processing','canceled']
+                
+      # Aggregated financial values
+      - name: valor_bruto_total
+        description: "Total gross value of the order before discounts."
+        
+      - name: valor_liquido_total
+        description: "Total net value of the order after discounts."
+
+# ==========================================
+# FACT - ORDER ITEMS
+# ==========================================
+
+  # Granular fact model at line-item level
+  - name: fct_pedidos_itens
+    description: "Fact table at the order item level, containing product granularity."
+
+    columns:
+      # Reference to order header
+      - name: id_pedido
+        description: "Unique identifier for the order."
+        tests:
+          - not_null
+
+      # Foreign key referencing product dimension
+      - name: id_produto
+        description: "Unique identifier for the product."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_produtos')
+                field: id_produto
+
+      # Foreign key referencing customer dimension
+      - name: id_cliente
+        description: "Unique identifier for the customer."
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_clientes')
+                field: id_cliente
+
+      # Order date repeated at item level for time-series analysis
+      - name: data_pedido
+        description: "Date when the order was placed."
+
+      # Item sales metrics
+      - name: quantidade
+        description: "Quantity of items sold."
+
+      - name: preco_unitario
+        description: "Unit price of the product."
+
+      - name: desconto
+        description: "Applied discount amount."
+
+      - name: valor_bruto
+        description: "Gross value of the item (quantity x price)."
+
+      - name: valor_liquido
+        description: "Net value of the item after discount."
+
+# ==========================================
+# DIMENSION - CUSTOMERS
+# ==========================================
+
+  # Dimension model for customer demographic attributes
+  - name: dim_clientes
+    description: "Dimension table containing descriptive customer information."
+
+    columns:
+      # Primary key definition
+      - name: id_cliente
+        description: "Unique identifier for the customer."
+        tests:
+          - not_null
+          - unique
+
+      # Descriptive customer attributes
+      - name: nome_completo
+        description: "Full name of the customer."
+
+      - name: email
+        description: "Email address of the customer."
+
+      - name: cidade
+        description: "City of the customer."
+
+      - name: estado
+        description: "State/Province of the customer."
+
+# ==========================================
+# DIMENSION - PRODUCTS
+# ==========================================
+
+  # Dimension model for product catalog details
+  - name: dim_produtos
+    description: "Dimension table containing product information."
+
+    columns:
+      # Primary key definition
+      - name: id_produto
+        description: "Unique identifier for the product."
+        tests:
+          - not_null
+          - unique
+
+      # Product details and pricing
+      - name: nome_produto
+        description: "Name of the product."
+
+      - name: categoria
+        description: "Category of the product."
+
+      - name: preco
+        description: "Standard price of the product."
+
+      - name: ativo
+        description: "Indicates whether the product is active."
+
+# ==========================================
+# DIMENSION - STATUS
+# ==========================================
+
+  # Lookup dimension generated from static seed mapping
+  - name: dim_status
+    description: "Dimension table for order status mappings, sourced from seed data."
+
+    columns:
+      # Primary key status code
+      - name: status
+        description: "Order status code."
+        tests:
+          - not_null
+          - unique
+
+      # Localized human-readable status description
+      - name: descricao
+        description: "Human-readable description of the status."
