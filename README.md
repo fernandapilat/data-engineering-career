@@ -8,15 +8,26 @@ Welcome to my central repository for Data Engineering Projects and Notes. This r
 
 Below is the repository structure along with a breakdown of what you will find inside each directory:
 
+
+```text
+data-engineering-career/
+└── level-1-foundations/
+    ├── architecture/
+    │   └── 01-introduction-to-data-engineering.md
+    └── pipelines/
+        └── dbt/
+```
+
+---
+
+### Directory Breakdown
+
 | Directory | Scope | What You Will Find |
 | :--- | :--- | :--- |
-| **`level-1-foundations/`** | Core Foundations | Main entry point containing fundamental projects, dbt models, and end-to-end transformation workflows. |
-| **`architecture/`** | Data Architecture | Multi-layered data model design (Raw -> Staging -> Intermediate -> Marts), DAG lineage setups, and architectural decision records. |
-| **`cloud/`** | Cloud Services | Infrastructure configurations, cloud storage setups, and environment management notes. |
-| **`databases/`** | Database Engineering | Relational database operations, PostgreSQL catalog/schema queries, performance tuning, and dynamic SQL utilities. |
-| **`devops/`** | Software Practices | Version control strategies using Git/GitHub, line-ending sanitization routines, and CI/CD automation setups. |
-| **`governance/`** | Data Governance | Data quality frameworks, boolean audit flag implementations (`fl_*`), null handling rules, and regex data validations. |
-| **`pipelines/`** | Pipeline Development | End-to-end SQL transformation models, Jinja macro implementations (`ref`, `source`), and CTE-based modular pipelines. |
+| **`architecture/`** | Core Concepts & Architecture | Fundamental concepts of Data Engineering, the role of the Data Engineer, data cleaning principles, and core architectural patterns. |
+| **`pipelines/dbt/`** | Data Transformation | End-to-end dbt project implementation, SQL transformation models, documentation, and schema configurations. |
 
 
 > **Status:** Work in Progress
+
+
