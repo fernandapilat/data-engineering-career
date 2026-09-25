@@ -5,7 +5,7 @@
             target_schema='snapshots',
             unique_key='id_cliente',
             strategy='check',
-            check_cols=['nombre', 'cidade', 'estado'],
+            check_cols=['nome_completo', 'cidade', 'estado'],
         )
     }}
 

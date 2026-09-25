@@ -614,7 +614,7 @@ dbt run; dbt test
   * **Staging / Intermediate (Views):** Apply early quality checks (`not_null`, `unique`, `relationships`) to catch source logic defects before materialization overhead.
   * **Marts (Tables):** Re-verify analytical rules (`accepted_values`, business logic constraints) to guarantee data accuracy post-materialization.
 
-## Module 6: Project Documentation & Execution
+## 6: Project Documentation & Execution
 
 ### 6.1. Comprehensive Project Documentation Architecture (`schema.yml`)
 
@@ -622,3 +622,85 @@ dbt run; dbt test
 * **Metadata & Data Lineage Governance:** Centralizes semantic model definitions, entity relationships, and column-level descriptions alongside generic test suite assertions inside repository-tracked `.yml` configurations.
 * **Format Specification:** Adheres strictly to dbt specification `version: 2` across all YAML declaration manifests.
 * **Static Compilation Integrity (`dbt parse`):** Utilizes `dbt parse` to validate YAML syntax, model dependencies, Jinja compilations, and schema linkages without invoking target database queries.
+
+### 6.2. Interactive Documentation & Lineage Visualization (`dbt docs`)
+
+#### a) Artifact Generation & Local Hosting
+* **Static Catalog Compilation (`dbt docs generate`):** Parses database metadata and repository YAML files to build static documentation assets inside the `target/` directory (`manifest.json`, `catalog.json`, `index.html`).
+* **Local Web Server Hosting (`dbt docs serve`):** Spins up a local web server providing an interactive UI to inspect project schemas, column descriptions, tests, and database object properties.
+
+#### b) Project Catalog & Lineage Graph Navigation
+* **Hierarchical Metadata Exploration:** Enables navigation across macros, models (`staging`, `intermediate`, `marts`), seeds, and snapshots to inspect column-level data types, YAML descriptions, and generic test assertions (`accepted_values`, `relationships`, `unique`, `not_null`).
+* **DAG Lineage Graph Visualization:** Renders interactive node dependencies, mapping the upstream-to-downstream transformation chain from staging views through intermediate transformations down to physical fact/dimension tables (`fct_pedidos` $\rightarrow$ `dim_status`).
+
+```bash
+# Compiles project metadata into target/ JSON artifacts
+dbt docs generate
+
+# Serves the interactive documentation UI on localhost:8080
+dbt docs serve
+```
+
+### 6.3. Advanced Orchestration & Execution Strategies (`dbt CLI`)
+
+#### a) Materialization & Test Execution Paradigms
+* **Individual Pipeline Stages (`dbt run` / `dbt test`):** Decouples model materialization from test assertion suites. `dbt run` compiles SQL and materializes target views/tables, while `dbt test` queries compiled YAML constraints (`not_null`, `unique`, `relationships`, `accepted_values`).
+* **Atomic DAG Execution (`dbt build`):** Unifies seed loading, model materialization, test execution, and snapshotting into a single dependency-ordered DAG traversal. Automatically aborts downstream executions if an upstream model or test fails.
+
+#### b) Node Selection Syntax & Dependency Graph Targeting
+* **Selective Model Targeting (`-s` / `--select`):** Restricts compilation scope to specific nodes, minimizing warehouse compute costs during incremental development.
+* **Upstream Graph Resolution (`+model_name`):** Evaluates DAG lineage to compile and execute all upstream prerequisites prior to materializing the target node (`+fct_pedidos`).
+
+#### c) Production Scheduling & Automation
+* **Automated DAG Orchestration:** Employs `dbt build` within production orchestrators (e.g., Airflow, Prefect, dbt Cloud Scheduler) post-ETL/ELT ingestion to enforce data quality gates and prevent corrupted data from propagating to BI layers.
+
+```bash
+# Materializes all database models (tables/views)
+dbt run
+
+# Executes generic and singular tests defined across project schema files
+dbt test
+
+# Runs seeds, models, snapshots, and tests sequentially with fail-fast enforcement
+dbt build
+
+# Executes a single specific model
+dbt run -s fct_pedidos
+
+# Executes all upstream dependencies along with the target model
+dbt run -s +fct_pedidos
+```
+
+### 6.4. dbt Operational Environments & Enterprise Integration Paradigms
+
+#### a) Development Interfaces & Execution Modalities
+* **dbt Core CLI (Open Source):** Local execution via terminal (`dbt run`, `dbt test`, `dbt build`, `dbt seed`, `dbt snapshot`, `dbt docs`). Provides full local autonomy, zero platform cost, and direct integration with local Data Warehouses (e.g., PostgreSQL).
+* **dbt Cloud / Web Platform (SaaS):** Managed web platform providing hosted IDE environments, automated job scheduling, native Git integrations (GitHub/GitLab/Bitbucket), and centralized documentation hosting.
+* **VS Code Extensions (Power User Workflows):** Integrates dbt extensions into local IDEs to provide auto-completion, lineage graph rendering, and syntax linting, bridging local development environments with cloud resources (dbt Fusion / dbt Cloud APIs).
+
+#### b) Enterprise Data Warehouse Interoperability
+* **Multi-Engine Support:** Decouples transformation logic from storage infrastructure. Adapters enable execution across cloud data platforms including PostgreSQL, Snowflake, Google BigQuery, AWS Redshift, Databricks, and Apache Spark.
+
+#### c) Production CI/CD & Version Control Lifecycle
+* **Git-Centric Workflow:** Version-controls all project models, custom Jinja macros, seed references, and documentation manifests inside Git repositories.
+* **CI/CD Pipeline Integration:** Enforces automated code reviews via Pull Requests, executing automated testing gates (`dbt build`) on ephemeral target schemas before merging to production branch (`master`).
+
+
+### 6.5. Pre-execution Code Parsing & Project Validation (`dbt parse`)
+
+#### a) Mechanics & Architectural Purpose
+* **Dry-Run Syntax & Structure Audit:** `dbt parse` scans, parses, and validates the entire project manifest (YAML configurations, Jinja expressions, SQL models, seeds, and snapshots) without establishing a target database connection or running queries.
+* **Compilation Safety Gate:** Verifies YAML schema syntax (such as `version: 2`), path structures, macro dependencies, and ref/source relations prior to initiating computationally heavy commands (`dbt run`, `dbt build`).
+
+#### b) Operational Advantages
+* **Rapid Feedback Loop:** Delivers fast compilation checks without the overhead of warehouse connection handshakes or query execution times.
+* **Early Defect Detection:** Catches syntax errors, broken references, indentation issues, and invalid YAML arguments early in the development cycle.
+* **CI/CD Pipeline Gatekeeping:** Serves as a lightweight initial step in automated CI/CD pipelines to validate code integrity before allocating cloud data warehouse resources.
+
+```bash
+# Validates all project syntax, Jinja macros, and YAML schemas without querying the database
+dbt parse
+```
+
+#### c) Official Reference & Documentation
+* **dbt Documentation:** For further details on project structure, configurations, and advanced features, refer to the official [dbt Documentation](https://docs.getdbt.com/docs/introduction?version=2).
