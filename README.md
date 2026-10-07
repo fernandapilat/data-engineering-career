@@ -15,7 +15,8 @@ data-engineering-career/
     ├── architecture/
     │   └── 01-introduction-to-data-engineering.md
     └── pipelines/
-        └── dbt/
+        ├── dbt/
+        └── airflow/
 ```
 
 ---
