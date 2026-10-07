@@ -27,6 +27,7 @@ data-engineering-career/
 | :--- | :--- | :--- |
 | **`architecture/`** | Core Concepts & Architecture | Fundamental concepts of Data Engineering, the role of the Data Engineer, data cleaning principles, and core architectural patterns. |
 | **`pipelines/dbt/`** | Data Transformation | End-to-end dbt project implementation, SQL transformation models, documentation, and schema configurations. |
+| **`pipelines/airflow/`** | Pipeline Orchestration | Notes and practical summaries on Apache Airflow, covering core concepts like DAGs, operators, tasks, schedulers, and execution flows. |
 
 
 > **Status:** Work in Progress
