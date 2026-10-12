@@ -97,3 +97,101 @@
 * **Visualização Estática:** Ideal para uma visão geral rápida; simples de ler, mas não reflete mudanças dinâmicas em tempo real[cite: 1].
 * **Visualização Interativa:** Permite interagir com o diagrama, expandir detalhes e aceder a logs e tempos de execução ao clicar em cada nó[cite: 1].
 * **Mapeamento por Camadas:** Organiza *workflows* complexos agrupando tarefas por funcionalidade para tornar o entendimento mais intuitivo[cite: 1].
+
+## 2. Preparing the Environment (Lesson Setup)
+
+### 2.1. Environment Setup & Docker Configuration
+* **Development Environment (WSL2 & Ubuntu):** We use Windows 11 with the Windows Subsystem for Linux (WSL2) running Ubuntu to mirror a production-like Linux environment.
+* **WSL Commands:** We use core terminal commands to interact with and verify our Linux distribution:
+  * `wsl`: Starts the default Linux environment.
+  * `wsl -l -v`: Lists installed Linux distributions and checks their WSL version (1 or 2).
+* **Docker Installation & Validation:** We configured Docker Desktop with the WSL2 backend (enabling the *VirtualMachinePlatform* and restarting the system). To verify that the Docker ecosystem is active and working properly within WSL, we run:
+  * `docker --version`: Checks the installed Docker version.
+  * `docker compose version`: Validates the container orchestration tool.
+* **Project Directory Structure (`project`):** Inside our project folder, we created the standard subdirectories required by Airflow:
+  * **`dags`**: Stores our Python DAG scripts, which Airflow automatically detects and runs.
+  * **`logs`**: Keeps execution history and task logs.
+  * **`plugins`**: Reserved for custom extensions.
+  * **`config`**: Holds additional configuration files.
+
+  ### 2.2. Setting Up Airflow with Docker Compose
+
+#### **Downloading and Inspecting the Configuration**
+* **Docker Compose File:** Downloaded using the official Apache Airflow repository link via the command: curl -LfO '[https://airflow.apache.org/docs/apache-airflow/stable/docker-compose.yaml](https://airflow.apache.org/docs/apache-airflow/stable/docker-compose.yaml)'
+* **Configuration Inspection:** Inspected via the command vi docker-compose.yaml to review settings such as the CeleryExecutor, default resource names, versioning, and default credentials.
+* **Core Services Included:**
+  * **PostgreSQL:** Database for metadata storage.
+  * **Redis:** Manages execution queues.
+  * **Airflow API Server:** Manages system core and mediates between containers and the database (replacing the traditional web server in Airflow 3).
+  * **Airflow Scheduler:** Handles scheduling logic.
+  * **Airflow DAG Processor:** Dedicated container for processing DAGs in Airflow 3.
+  * **Airflow Worker:** Executes tasks.
+  * **Airflow Triggerer:** Manages triggers and sensors.
+
+#### **Environment Setup and Initialization**
+* **Environment Variable:** Defined the AIRFLOW_UID variable using the current user ID to prevent permission issues via: echo -e "AIRFLOW_UID=$(id -u)" > .env
+* **Initialization:** Executed the initialization command to download dependencies and set up the metadata database: docker compose up airflow-init
+* **Starting Services:** Launched all background containers using detached mode once initialization completed with exit code 0: docker compose up -d
+
+#### **Verification and Access**
+* **Container Status:** Checked active containers using docker ps to ensure all services reached a healthy or started state.
+* **Local vs. Server Access:** 
+  * **Local Environment (WSL2):** Accessed via localhost:8080.
+  * **Remote Server Environment:** Accessed via the server's public IP address or domain (http://<SERVER_IP>:8080), requiring appropriate firewall/security group port configurations (port 8080 open) and recommended reverse proxy setups (such as Nginx with SSL) for secure production deployments.
+* **Default Credentials:** 
+  * **Username:** airflow
+  * **Password:** airflow
+
+  ### 2.3. Essential Configurations & Volume Mapping
+
+#### **The `AIRFLOW_UID` Variable**
+* **Purpose:** Defined as `AIRFLOW_UID=1000` in the `.env` file to prevent permission issues between the host Linux environment and the containers.
+* **Permission Management:** Without this variable, mounted container folders default to the container's root user, causing permission failures during file editing. Setting it ensures processes respect the operating system's execution user.
+
+#### **Volume Mapping and Directory Synchronization**
+* **Compose Configuration:** The `docker-compose.yaml` file maps local project folders (like `dags`, `logs`, `config`, and `plugins`) directly to corresponding paths inside the container (such as `/opt/airflow/dags`).
+* **User Alignment:** The mapping configuration also incorporates the user variable to dictate process execution ownership within the container.
+* **Behavior:** Any files created, modified, or removed locally in the `dags` folder are automatically synchronized and reflected inside the container in real time.
+
+#### **Practical Verification**
+* **Inspection Command:** Checked volume definitions inside the compose file using: cat docker-compose.yaml | grep -A 10 "volumes:"
+* **Container Execution Check:** Used `docker compose exec airflow-apiserver ls /opt/airflow/dags/` to verify directory contents inside the container.
+* **Synchronization Test:** Creating a temporary file (`touch dags/teste.py`) or removing it on the host machine instantly updates the state visible inside the container.
+
+### 2.4. UI Tour & Architecture Overview
+
+#### **Access and Version Context**
+* **Accessing the UI:** Opened via the browser at `localhost:8080` using default administrator credentials.
+* **Airflow 3 vs. Airflow 2:** Airflow 3 features a redesigned architecture and UI. Key changes include the transition from `webserver` to `apiserver`, direct database interactions replaced by API server mediation, and a dedicated `DAG Processor` container.
+
+![alt text](home_interface.png)
+
+#### **Home and Dashboard Navigation**
+* **Overview/Home:** Provides environment health statistics (Scheduler, Triggerer, DAG Processor, and PostgreSQL metadata database status) alongside failed, running, and active DAG metrics.
+* **DAGs List:** The primary workspace for managing, triggering runs via play buttons, monitoring logs, and handling installed example DAGs.
+
+#### **Views and DAG Details**
+* **Visualization Options:** Includes Grid view, Graph view, and Diagram view to inspect task dependencies.
+* **Execution & Metadata Tabs:** Offers execution history, task details, calendar views, backfill support, audit logs, and Python source code inspection under DAG Code.
+* **Other Details:** Displays metadata such as `dag_id`, execution user, file path, parse time, and last interpretation timestamp.
+
+![alt text](dag_interface.png)
+
+#### **Advanced Features and Settings**
+* **Assets & Navigation:** Introduces Assets for data passing workflows (replacing older Datasets), alongside system audit logs, jobs, XComs, and variables.
+* **Security & Preferences:** User management and role configurations (handled via CLI in Airflow 3), timezone configurations, language/theme toggling, and API token generation.
+
+### 2.5. Supplementary: User Management and Security
+
+#### **Security Fundamentals in Airflow**
+* **Scope:** Airflow security extends beyond task execution to encompass environment, data structure, and UI access control.
+* **Objective:** Ensures identities can only view or alter authorized resources, protecting sensitive data and critical system operations.
+
+#### **CLI-Based Control in Airflow 3**
+* **Shift from Airflow 2:** Unlike Airflow 2 where some operations could be handled via the graphical interface, user registration in Airflow 3 is performed via the command-line interface (CLI).
+* **Purpose:** Centralizes sensitive operations and minimizes the risk of accidental configurations through exposed interfaces.
+* **Capabilities:** Administrators can precisely define roles and permissions, using specific commands to create, edit, and remove users while associating custom permission sets.
+
+#### **Pros and Considerations**
+* **Security Benefits:** Offers greater security by reducing the attack surface exposed on web interfaces, while automation via scripts maintains consistent access control standards in production.
+* **Learning Curve:** Requires teams to be comfortable with command-line usage and security practices, introducing an initial learning curve that is offset by enhanced system robustness and auditability.
