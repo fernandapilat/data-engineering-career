@@ -195,3 +195,171 @@
 #### **Pros and Considerations**
 * **Security Benefits:** Offers greater security by reducing the attack surface exposed on web interfaces, while automation via scripts maintains consistent access control standards in production.
 * **Learning Curve:** Requires teams to be comfortable with command-line usage and security practices, introducing an initial learning curve that is offset by enhanced system robustness and auditability.
+
+## 3: Your First DAG
+
+### 3.1. Anatomy of a DAG: Vendemais Project & Incremental Implementation
+
+#### **Project Context & Architecture**
+* **Business Scenario:** Based on a fictional company called *Vendemais*, featuring two main pipelines (sales reporting and dollar-to-real exchange rate history).
+* **Airflow's Role:** Acts strictly as an orchestrator rather than a dedicated ETL engine, managing Python scripts, ingestion processes, and transformations.
+* **Separation of Concerns:** Business logic and data scripts are isolated within a `helpers` folder, separating execution logic from the core orchestration workflows inside DAG files.
+* **Environment & Path Adjustments:** Additional directories like `helpers`, `data`, and `docs` require integration into the Airflow container via `PYTHONPATH` and updated volume mappings in the `docker-compose.yaml` file to ensure seamless imports.
+
+#### **Incremental DAG Development (Sales Pipeline)**
+* **Design Strategy:** Built iteratively starting with a basic structure using stubs before integrating business helpers.
+* **Core Parameters & Metadata:**
+  * `dag_id`: `"pipeline_vendas"`[cite: 1]
+  * `schedule`: Set to `None` for manual execution in this initial phase[cite: 1].
+  * `catchup`: Configured as `False` to prevent retrospective executions[cite: 1].
+  * `default_args`: Includes a `start_date` (`datetime(2025, 1, 1)`), `owner`, `depends_on_past`, and resilience settings like `retries=3` with a 5-minute `retry_delay`.
+* **Task Structure (TaskFlow API):** Utilizes `@dag` and `@task` decorators with implicit XCom data passing between sequential steps[cite: 1]:
+  1. `extrair_dados`: Pulls raw sales CSV files using helper functions.
+  2. `transformar_dados`: Processes and writes temporary summary files.
+  3. `carregar_dados`: Moves transformed data to the final output destination.
+
+#### **Verification**
+* **Deployment Validation:** Restarted Docker services (`docker compose down` followed by `docker compose up -d`) to apply volume updates.
+* **UI Inspection:** Confirmed successful registration of the `pipeline_vendas` DAG in the Airflow 3 interface, verifying proper task chaining under the Graph and Grid views.
+
+### 3.2. Anatomy of a DAG: Core Components & Structure
+
+#### **1. What is a DAG?**
+* **Definition:** DAG stands for *Directed Acyclic Graph*. It is the core blueprint in Apache Airflow representing a collection of all the tasks you want to run, organized in a way that reflects their relationships and dependencies.
+* **Directed:** Tasks have a defined direction or flow (e.g., Task A must finish before Task B starts).
+* **Acyclic:** There are no loops or infinite cycles (Task B cannot loop back to trigger Task A directly in a way that creates an endless loop).
+
+> **💡 Best Practice Tip: Orchestration vs. Business Logic**
+> Airflow is an **orchestrator**, not a processing or transformation engine. A DAG should **not** contain heavy business logic or raw data processing code directly in its file. Instead, the DAG acts as a lightweight coordinator that imports and invokes Python functions and scripts stored in an external `helpers` folder (e.g., extracting or transforming data via modular scripts), keeping the pipeline clean and maintainable.
+
+#### **2. Core Components of a DAG File**
+* **Imports:** Necessary libraries to define the workflow. In modern Airflow (especially with Airflow 3), we heavily leverage the **TaskFlow API** (`@dag`, `@task`).
+* **Default Arguments (`default_args`):** Dictionary defining standard metadata for the tasks, such as:
+  * `owner`: The creator or team responsible for the pipeline.
+  * `start_date`: The point in time from which the DAG starts scheduling and running.
+  * `retries` & `retry_delay`: Resilience configurations defining how many times a failed task should retry and the waiting period between attempts.
+* **DAG Definition Decorator (`@dag`):** The primary wrapper function that turns a Python function into an Airflow DAG. Key parameters include:
+  * `dag_id`: The unique name of the pipeline visible in the UI.
+  * `schedule`: Defines the frequency or cron expression for execution (`None` for manual runs).
+  * `catchup`: Boolean flag (`False` recommended) to prevent Airflow from running all historical backfilled instances between the `start_date` and the current date.
+  * `tags`: Labels used to filter and organize DAGs in the UI.
+
+#### **3. Tasks and the TaskFlow API**
+* **Tasks (`@task`):** Individual units of work (nodes in the graph) wrapped as Python functions.
+* **Data Passing (Implicit XComs):** The TaskFlow API automatically handles passing return values from one task to the next under the hood using Airflow XComs, avoiding manual `push`/`pull` boilerplate code.
+* **Dependency Chaining:** Task execution order is established naturally by calling the tasks sequentially inside the main DAG function (e.g., passing the output of `extrair_dados()` directly into `transformar_dados()`).
+
+```python
+from datetime import datetime, timedelta
+from airflow.decorators import dag, task
+
+# Define standard default arguments for the DAG tasks
+DEFAULT_ARGS = {
+    "owner": "airflow",
+    "depends_on_past": False,
+    "start_date": datetime(2025, 1, 1),
+    "retries": 3,
+    "retry_delay": timedelta(minutes=5),
+}
+
+@dag(
+    dag_id="template_pipeline",
+    default_args=DEFAULT_ARGS,
+    schedule=None,  # Use None for manual runs, or cron expressions like "0 5 * * *" for scheduled runs
+    catchup=False,
+    tags=["template", "data-engineering"],
+)
+def template_pipeline():
+    """
+    Pipeline Documentation:
+    This is a structural template demonstrating best practices for 
+    Airflow 3 DAG development using the TaskFlow API and explicit helpers/stubs.
+    """
+
+    @task
+    def extract_data() -> dict:
+        """
+        Extraction Task:
+        Responsible for pulling raw data from files, APIs, or databases.
+        Returns a dictionary or file path passed implicitly via XComs.
+        """
+        print("Starting data extraction...")
+        # Example output metadata
+        source_info = {"file_path": "/opt/airflow/data/input/source.csv"}
+        return source_info
+
+    @task
+    def transform_data(extract_output: dict) -> str:
+        """
+        Transformation Task:
+        Receives output from the extraction step, processes business logic,
+        and saves results to a temporary or staging path.
+        """
+        input_path = extract_output.get("file_path")
+        print(f"Transforming data from: {input_path}")
+        
+        output_path = "/opt/airflow/data/output/processed_data.csv"
+        return output_path
+
+    @task
+    def load_data(transform_output: str):
+        """
+        Load Task:
+        Takes the processed file path and loads it into the final data warehouse,
+        destination folder, or target system.
+        """
+        print(f"Loading data from {transform_output} into final destination...")
+
+    # --- Task Dependencies & Execution Flow ---
+    # Chaining tasks sequentially using functional returns
+    raw_data = extract_data()
+    processed_data = transform_data(raw_data)
+    load_data(processed_data)
+
+# Instantiate the DAG object so Airflow can register it
+template_pipeline()
+```
+
+### 3.3. Task Dependencies, Parallelism & Graph Visualization
+
+#### **Task Chaining with Bitshift Operators**
+* **Sequential Flow (`>>`):** Represents linear execution where downstream tasks wait for upstream task completion (e.g., `t_extrair >> t_transformar >> t_carregar`).
+* **Upstream Operator (`<<`):** Works identically to `>>` but in reverse direction (rarely used in production environments to maintain left-to-right readability).
+
+#### **Parallel Execution & Fan-In/Fan-Out Patterns**
+* **Branching/Fan-Out (`[ ]`):** Grouping tasks inside brackets creates parallel execution paths following an initial step (e.g., `t_extrair >> [t_transformar, t_carregar]`).
+* **Convergence/Fan-In:** A downstream task only runs after **all** parallel upstream tasks finish successfully (e.g., `t_extrair >> [t_transformar, t_carregar] >> t_enviar_email`).
+* **Unconnected Tasks:** Declaring task instances without dependency operators causes them to trigger simultaneously without constraints.
+
+#### **Dynamic Date Handling & Execution Context**
+* **Logical Date (`ds`):** Using Airflow's Jinja context variable `ds` dynamically injects the logical execution date into file paths (e.g., `resumo_categoria_{ds}.csv`) instead of hardcoding dates.
+* **Execution Validation:** Verified through the Graph View UI, ensuring tasks process input files from `/opt/airflow/data/input` and output final results to `/opt/airflow/data/output` according to the execution context.
+
+### 3.4. Reading Logs and Debugging Errors
+
+#### **Log Analysis and Filtering**
+* **Grid View Insights:** Allows monitoring of execution states, historical runs, and performance metrics across pipeline tasks.
+* **Filtering Capabilities:** Logs can be filtered by severity level (such as warnings or critical errors) and source origin (like Python or specific task components) to streamline troubleshooting.
+
+#### **Task States and Manual Overrides**
+* **State Management:** Airflow allows manual intervention to change a task state (e.g., flipping a false positive/negative between success and failure), with all alterations recorded in the audit logs.
+* **Retries & Resilience:** Configured retry mechanisms automatically attempt recovery based on defined intervals (e.g., 3 attempts spaced by 5 minutes) before marking a task as a definitive failure (displayed in orange during retries and red upon failure).
+
+#### **Error Correction and Re-execution**
+* **Debugging Workflow:** When code errors occur (such as a missing DataFrame column key), logs pinpoint the exact exception stack trace.
+* **Clearing and Rerunning:** Once fixes are applied to helper files, individual tasks can be cleared and re-executed independently without restarting the entire pipeline, or the full DAG can be rerun from the root level.
+
+### 3.5. Supplementary: Volume Mapping and PythonPath in Docker Compose
+
+#### **Understanding Volumes in Docker Compose**
+* **Purpose:** Volumes allow host operating system directories to be mounted directly inside containers while maintaining the expected file structure[cite: 1].
+* **Significance in Airflow:** Proper configuration avoids import issues and code synchronization failures across directories storing DAGs, helper scripts, and data[cite: 1].
+
+#### **The Importance of PythonPath**
+* **Definition:** PythonPath is an environment variable that informs the Python interpreter where to search for modules and packages to import[cite: 1].
+* **Integration:** Because custom business logic and helper scripts reside in folders like `helpers` or `data` outside default paths, updating the PythonPath prevents "module not found" errors and promotes clean integration[cite: 1].
+
+#### **Best Practices for Configuration**
+* **Environment Configuration:** Review configuration files like `.env` to guarantee that the PythonPath includes all directories holding custom modules[cite: 1].
+* **Compose Mapping:** Map all required folders (such as `helpers` and `data`) inside `docker-compose.yml` to keep them accessible within the container[cite: 1].
+* **Restarting Services:** Always restart containers after altering configurations to ensure modifications are fully applied during execution[cite: 1].
