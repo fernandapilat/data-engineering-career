@@ -363,3 +363,47 @@ template_pipeline()
 * **Environment Configuration:** Review configuration files like `.env` to guarantee that the PythonPath includes all directories holding custom modules[cite: 1].
 * **Compose Mapping:** Map all required folders (such as `helpers` and `data`) inside `docker-compose.yml` to keep them accessible within the container[cite: 1].
 * **Restarting Services:** Always restart containers after altering configurations to ensure modifications are fully applied during execution[cite: 1].
+
+## 4. USD-BRL Exchange Rate Pipeline
+
+### 4.1. Use Case
+
+* **Business Goal:** Automatically fetch the daily USD-BRL exchange rate and maintain a consolidated history file covering the last 7 days for the financial department.
+* **Data Source:** External REST API (AwesomeAPI) returning unauthenticated JSON data.
+* **Core Pipeline Workflow:**
+  1. **Fetch from API:** Execute an HTTP GET request to retrieve exchange rate data.
+  2. **Save Raw JSON:** Store the raw response locally using a standardized date naming convention (`cotacao_YYYY-MM-DD.json`).
+  3. **Consolidate History:** Read raw JSONs from the past 7 days, filter valid dates, sort, and export a consolidated CSV file.
+* **Resilience & Error Handling:** Configured with automatic retries (3 attempts spaced by 5 minutes) for API unavailability, validation rules for expected fields (`bid`, `ask`, `high`, `low`, `create_date`), and future email notification hooks for failures.
+* **Helper Architecture Integration:** Business logic is decoupled from orchestration into a dedicated Python helper script within the `helpers/cotacao` folder, ensuring clean separation of concerns.
+
+### 4.2. Building the USD-BRL Exchange Rate DAG
+
+* **AI-Assisted Generation:** The initial DAG structure (`pipeline_cotacao`) was generated automatically using an AI agent based on technical specifications and business helpers without using FileSensors, Variables, or XComs.
+* **Pipeline Structure & Tasks:**
+  * Configured with `schedule=None` for manual execution, `catchup=False`, and default resilience arguments (3 retries with a 5-minute delay).
+  * Consists of two primary tasks: `buscar_e_salvar_cotacao` (fetches rate data via API and saves raw JSON) and `consolidar` (reads the last 7 days of raw JSON files to generate a consolidated CSV).
+* **Code Constants & Configuration:** Uses local file-path constants (`URL_API`, `PASTA_RAW`, `CAMINHO_CONSOLIDADO`) to maintain fixed routes without relying on Airflow Variables.
+* **Code Standardization (Helper Aliases):** Refactored helper imports to use a consistent alias pattern (`import helpers.cotacao as cotacao_helper`), aligning with conventions established in previous pipelines.
+* **Airflow Validation:** Successfully verified the new `pipeline_cotacao` DAG registration and task sequence in the Airflow 3 UI.
+
+### 4.3. End-to-End Pipeline Execution
+
+* **Pipeline Execution & Validation:** Successfully triggered the `pipeline_cotacao` DAG manually, verifying that both tasks (`buscar_e_salvar_cotacao` and `consolidar`) completed with success states in the Airflow UI.
+* **Raw Data Capture:** Inspected the raw output directory (`/opt/airflow/data/cotacao/raw`), confirming that the API successfully fetched and stored daily JSON payloads containing currency pairs, rates (`bid`, `ask`, `high`, `low`), and creation timestamps.
+* **History Consolidation:** Verified the generated consolidated CSV file (`historico_7dias.csv`), confirming that data from multiple runs (e.g., May 24 and May 25) was properly sorted and maintained within the rolling 7-day window.
+* **Logging Observations:** Noted that default helper functions lack verbose print statements, presenting an opportunity to enhance task visibility and debugging through improved logging in future iterations.
+
+### 4.4. Supplementary: Technical Specification Validation
+
+#### **The Importance of Detailed Specifications**
+* **Implementation Guide:** Detailed specifications act as a blueprint for development, ensuring that all team members and automated tools share a unified understanding of pipeline requirements.
+* **Communication & Alignment:** Mitigates risks of misinterpretation regarding task logic, scheduling, error handling, and coding patterns across the team.
+
+#### **Validation Approaches**
+* **Structured Reviews:** Involves code and document reviews to evaluate technical artifacts against established project guidelines, ensuring consistent standards (such as uniform helper module imports).
+* **Automated Testing:** Can be complemented by automated checks to verify parameter adherence and expected data formats.
+
+#### **Impacts on Maintenance and Evolution**
+* **Reliability & Troubleshooting:** Reduces errors caused by ambiguous requirements, making bug identification during testing significantly faster.
+* **Long-term Scalability:** Simplifies future maintenance and system evolution, allowing rapid adjustments without compromising consistency or code integrity.
