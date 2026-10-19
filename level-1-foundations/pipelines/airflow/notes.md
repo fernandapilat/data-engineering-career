@@ -407,3 +407,67 @@ template_pipeline()
 #### **Impacts on Maintenance and Evolution**
 * **Reliability & Troubleshooting:** Reduces errors caused by ambiguous requirements, making bug identification during testing significantly faster.
 * **Long-term Scalability:** Simplifies future maintenance and system evolution, allowing rapid adjustments without compromising consistency or code integrity.
+
+## 5. Making DAGs More Robust
+
+### 5.1. Understanding XComs (Cross-Communication)
+
+#### **What is an XCom?**
+* **Definition:** XCom stands for *Cross-Communication*. It is Airflow's built-in mechanism that enables independent tasks to exchange small amounts of data or metadata with each other.
+* **Problem Solved:** Because tasks execute in isolated environments (such as separate Docker containers), they cannot share memory variables directly. XCom bridges this gap by persisting shared data in the Airflow metadata database.
+
+#### **Implicit vs. Explicit XComs**
+* **Implicit XComs (TaskFlow API):** When using modern Airflow decorators (`@task`), XComs happen automatically under the hood. If a task returns a value, the TaskFlow API implicitly pushes it to XCom, and downstream tasks receive it simply by taking that function's output as an argument.
+* **Explicit XComs (Traditional Operators):** Older operator-based structures required manual usage of Python callables and context parameters to push and pull data explicitly:
+  * `context['ti'].xcom_push(key='my_key', value='my_data')`
+  * `context['ti'].xcom_pull(task_ids='task_name', key='my_key')`
+
+#### **Best Practices & Limitations**
+* **Data Size Limit:** XComs are designed for **small payloads** (such as file paths, scalar metrics, small dictionaries, or status flags). 
+* **Performance Warning:** Never use XComs to pass large datasets (like heavy Pandas DataFrames or massive raw files) because storing and retrieving large objects from the metadata database degrades performance. For large data, tasks should read/write shared storage (such as disk volumes, S3, or cloud storage) and only pass file paths or identifiers via XCom.
+
+### 5.2. Airflow Variables and Connections
+
+#### **Airflow Variables**
+* **Definition:** A key-value store built into Airflow used to store global configuration settings, metadata, or environment parameters (e.g., file paths, environment flags, or threshold values) that can be accessed across any DAG in the environment.
+* **Usage:** Allows decoupling configuration from code, preventing hardcoded values inside DAG scripts.
+* **Security Note:** Standard variables are stored in plain text in the metadata database. For sensitive information like passwords or API keys, Airflow provides a **Secret Backend** or encrypted variables feature.
+
+#### **Airflow Connections (`Connections`)**
+* **Definition:** Securely stores credentials and connection parameters required to interact with external systems, databases, or APIs (such as PostgreSQL, AWS, HTTP endpoints, or SMTP servers).
+* **Components:** A connection typically encapsulates connection types, hosts, ports, logins, passwords, and extra JSON configurations.
+* **Benefits:** 
+  * Centralized management of credentials outside of Python code.
+  * Avoids hardcoding sensitive authentication secrets.
+  * Referenced easily inside tasks or operators via a unique `conn_id` (e.g., `HttpHook` or `BaseHook`).
+
+### 5.3. Adding FileSensors to Pipelines
+
+#### **Overview of Airflow Sensors**
+* **Definition:** Sensors are a specialized type of operator that continuously poll a condition in a loop until it becomes true, after which downstream tasks are triggered.
+* **Key Configuration Parameters:**
+  * **Poke Interval:** The time interval (in seconds) between consecutive checks.
+  * **Timeout:** The maximum duration to wait before marking the sensor task as failed.
+  * **Mode:** Can be set to `poke` (occupies a worker thread continuously while waiting) or `reschedule` (releases the worker thread between checks, which is more resource-efficient for production environments).
+
+#### **FileSensor & Connection Setup**
+* **Connection Config (`fs_default`):** Configured via the Airflow UI under Admin > Connections using the `File` type, mapping the root path in the Extra JSON field (e.g., `{'path':'/'}`) to navigate local or mounted directories.
+* **Production Context:** In real-world cloud architectures, equivalent storage sensors (like AWS `S3KeySensor` or Azure Blob equivalents) are used to monitor external object stores.
+
+#### **Implementation & Execution Flow**
+* **Jinja Templating:** Combines Airflow variables and execution context macros to dynamically target files based on the logical date (e.g., `filepath='{{ var.value.vendas_dir_input }}/vendas_{{ ds }}.csv'`).
+* **Workflow Integration:** Positioned as the upstream dependency starting point (`t_aguardar >> t_extrair >> t_transformar >> t_carregar`), ensuring that file processing only proceeds once the target file arrives within the specified timeout window.
+
+### 5.4. Pipeline Scheduling & Catchup Configuration
+
+#### **Scheduling Mechanisms**
+* **Airflow UI Limitation:** Scheduling and orchestration configurations cannot be managed directly through the Airflow graphical interface and must be defined within the DAG code.
+* **Presets:** Built-in shorthand strings provided by Airflow for common schedules, such as `schedule="@daily"`, which triggers execution automatically every day at midnight (00:00).
+* **CRON Expressions:** Standard Linux CRON syntax (`minute hour day_of_month month day_of_week`) offering precise scheduling flexibility (e.g., `schedule="0 7 * * *"` for daily execution at 7:00 AM, or `schedule="0 7 * * 3"` for Wednesdays at 7:00 AM).
+
+#### **The Catchup Parameter**
+* **Definition:** Controls whether Airflow should backfill and execute historical instances of the DAG from the `start_date` up to the current date.
+* **Production Recommendation:** Kept as `catchup=False` to prevent unintended backfilling of past periods when deploying a new scheduled pipeline.
+
+#### **Behavior in Practice**
+* **Integration with Sensors:** When a pipeline is scheduled (e.g., daily at 7:00 AM) and incorporates a `FileSensor` with a 3-hour timeout, the process initiates at 7:00 AM, polls every 60 seconds, and processes the file immediately upon arrival, failing only if the timeout expires without detection.
