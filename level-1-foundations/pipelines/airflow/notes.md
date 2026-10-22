@@ -471,3 +471,88 @@ template_pipeline()
 
 #### **Behavior in Practice**
 * **Integration with Sensors:** When a pipeline is scheduled (e.g., daily at 7:00 AM) and incorporates a `FileSensor` with a 3-hour timeout, the process initiates at 7:00 AM, polls every 60 seconds, and processes the file immediately upon arrival, failing only if the timeout expires without detection.
+
+### 5.5. Handling Retries, Failures, and Notifications
+
+#### **Retries and Resilience Configuration**
+* **Retry Parameters:** Configured via `default_args` to define resilience behavior across tasks, such as `retries` (number of retry attempts) and `retry_delay` (waiting interval between attempts, e.g., 1 minute).
+* **Granular Control:** While typically set globally in `default_args`, retries can also be tailored individually per task if fine-tuned control is required.
+
+#### **Failure Callbacks (`on_failure_callback`)**
+* **Purpose:** Executes a custom Python function automatically when a task definitively fails after exhausting all retry attempts.
+* **Context Dictionary:** The callback function receives a `context` dictionary containing metadata about the execution, such as the `dag_id`, `task_id`, `logical_date` (or `execution_date`), and the raised `exception`.
+* **Alerting Integration:** Commonly used to read destination addresses from Airflow Variables (e.g., `Variable.get("email_alertas")`) and dispatch formatted HTML alert emails using `send_email`.
+
+#### **SMTP & Docker Environment Configuration**
+* **Environment Variables:** Required email and SMTP backend parameters must be injected into the Airflow container configuration within the `docker-compose` file (e.g., `AIRFLOW__EMAIL__EMAIL_BACKEND`, `AIRFLOW__SMTP__SMTP_HOST`, `AIRFLOW__SMTP__SMTP_PORT`, `AIRFLOW__SMTP__SMTP_MAIL_FROM`).
+* **Airflow Connection:** Configured under Admin > Connections as an E-mail type (with ID `smtp_default`), bundling authentication credentials (like generated app passwords from providers such as Gmail) and port configurations (port `587` with TLS).
+
+## 5.6. Externalized Configurations and Versioning
+
+* **Separation of Concerns:** Separating parameters and credentials from source code allows pipelines to be version-controlled cleanly while sensitive variables and connections are managed centrally within the Airflow environment.
+* **Environment Management:** Storing configurations externally (such as directory paths or API URLs) makes it possible to maintain distinct parameters across development, staging, and production environments without letting changes in one environment impact the others.
+* **CI/CD Integration & Security:** Integrating configuration management with CI/CD deployment flows allows verification of parameters immediately, enhancing security by preventing sensitive data exposure in source code and centralizing auditing and maintenance.
+
+## 6. Best Practices & Next Steps
+
+### 6.1. Project Structure and Development Best Practices
+
+#### **Project Layout & Architecture**
+* **Separation of Concerns:** Clearly distinguishes between core orchestration workflows (stored in `dags/`) and externalized business logic / helper functions (stored in `helpers/`).
+* **Directory Organization:**
+  * `.claude/skills/`: Houses specialized AI agent skills (e.g., cron generation, DAG builders, error analysis).
+  * `config/` & `configs/`: Centralizes Airflow configuration files and environment-specific parameters (`dev` vs. `prod`).
+  * `data/`, `docs/`, `plugins/`, and `scripts/`: Manages local storage bindings, documentation specifications, custom extensions, and utility scripts.
+
+#### **Airflow Development Best Practices**
+* **Naming Conventions & Metadata:** Use clear, intentional `dag_id` strings and task names following `snake_case`, complemented by descriptive documentation strings and relevant categorization `tags` (e.g., `["cotacao", "financeiro"]`).
+* **Safe Configuration Defaults:** 
+  * Always set `catchup=False` to prevent unintended historical backfilling.
+  * Use a fixed, deterministic `start_date` rather than dynamic timestamps like `now()`.
+  * Standardize resilience parameters in `default_args` (such as `retries`, `retry_delay`, and an `on_failure_callback` for error tracking).
+* **Modern API & Isolation:** Prefer the modern TaskFlow API (`@dag`, `@task`) over legacy Operators, keeping tasks modular, independently testable, and free from heavy data payloads in XComs.
+
+### 6.2. Development and Production Environment Segregation
+
+#### **Logical Separation (Single Airflow Instance)**
+* **Approach:** Co-locates `dev` and `prod` contexts within the same Airflow environment.
+* **Mechanism:** Differentiates execution paths using environment identification variables (e.g., checking if the environment is `dev`), along with environment-suffixed connections (e.g., `awesomeapi_http_dev`) and distinct variable mappings.
+* **Limitations:** Not ideal for heavy workloads, as resource contention or bugs in development DAGs can negatively impact production stability on the shared server.
+
+#### **Physical Segregation & Infrastructure**
+* **Approach:** Utilizes completely independent parallel environments for `dev` and `prod`.
+* **Benefits:** 
+  * Complete isolation prevents development experiments or resource spikes from breaking production pipelines.
+  * Identical variable and connection names can be maintained across both environments without conditional `if/else` logic in code, eliminating human errors during promotion.
+
+#### **Git Branching & CI/CD Pipelines**
+* **Workflow Alignment:** Links environments directly to version-control branches (e.g., `dev` branch deploys to development infrastructure, `main`/`prod` branch deploys to production).
+* **Automation:** Incorporates deployment pipelines (such as Jenkins or standard CI/CD runners) to validate, test, and automate code promotion, representing an industry best practice for reliable data engineering operations.
+
+### 6.3. Supplementary: Managed Airflow vs. Containerized Environments
+
+#### **Containerization (Docker, Kubernetes, Fargate)**
+* **Control & Customization:** Offers total control over the environment configuration, component versions, log storage, and performance tuning.
+* **Operational Overhead:** Requires dedicated effort to set up, monitor, scale, and maintain the underlying infrastructure, including manual volume mappings and executor configurations.
+
+#### **Managed Services (MWAA, Astronomer, Google Cloud Composer)**
+* **Simplicity & Speed:** Abstracts away operational complexity, allowing engineering teams to focus entirely on pipeline orchestration.
+* **Native Features:** Generally provide built-in auto-scaling, streamlined upgrades, and expert provider support.
+* **Trade-offs:** Involves higher financial costs and less deep customization flexibility compared to self-hosted container setups.
+
+#### **Choosing the Right Approach**
+* **Context-Driven Decision:** The choice depends on project requirements, team capacity, and budget. Use containerization for maximum flexibility and custom integrations, or opt for managed services to minimize operational friction and accelerate time-to-market.
+
+### 6.3. Supplementary: Managed Airflow vs. Containerized Environments
+
+#### **Containerization (Docker, Kubernetes, Fargate)**
+* **Control & Customization:** Offers total control over the environment configuration, component versions, log storage, and performance tuning.
+* **Operational Overhead:** Requires dedicated effort to set up, monitor, scale, and maintain the underlying infrastructure, including manual volume mappings and executor configurations.
+
+#### **Managed Services (MWAA, Astronomer, Google Cloud Composer)**
+* **Simplicity & Speed:** Abstracts away operational complexity, allowing engineering teams to focus entirely on pipeline orchestration.
+* **Native Features:** Generally provide built-in auto-scaling, streamlined upgrades, and expert provider support.
+* **Trade-offs:** Involves higher financial costs and less deep customization flexibility compared to self-hosted container setups.
+
+#### **Choosing the Right Approach**
+* **Context-Driven Decision:** The choice depends on project requirements, team capacity, and budget. Use containerization for maximum flexibility and custom integrations, or opt for managed services to minimize operational friction and accelerate time-to-market.
