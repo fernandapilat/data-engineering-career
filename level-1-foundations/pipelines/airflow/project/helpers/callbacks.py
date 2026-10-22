@@ -1,4 +1,4 @@
-"""Callbacks reutilizáveis para as DAGs da Vende+."""
+"""Reusable callbacks for Vende+ DAGs."""
 
 import logging
 
@@ -9,26 +9,29 @@ log = logging.getLogger(__name__)
 
 
 def notificar_falha(context):
-    """Envia e-mail de alerta via Connection SMTP ao detectar falha em uma task."""
+    """Sends an email alert via SMTP Connection upon detecting a task failure."""
+    # Extract contextual details from the failed task instance
     dag_id = context["dag"].dag_id
     task_id = context["task_instance"].task_id
     exec_date = context.get("logical_date") or context.get("data_interval_start")
     exception = context.get("exception")
 
+    # Retrieve the alert recipient email from Airflow Variables
     destinatario = Variable.get("email_alertas")
 
-    assunto = f"[Airflow] Falha em {dag_id}.{task_id}"
+    assunto = f"[Airflow] Failure in {dag_id}.{task_id}"
     corpo = f"""
-    <h3>Falha detectada no pipeline da Vende+</h3>
+    <h3>Failure detected in the Vende+ pipeline</h3>
     <ul>
       <li><b>DAG:</b> {dag_id}</li>
       <li><b>Task:</b> {task_id}</li>
-      <li><b>Data de execução:</b> {exec_date}</li>
-      <li><b>Erro:</b> {exception}</li>
+      <li><b>Execution Date:</b> {exec_date}</li>
+      <li><b>Error:</b> {exception}</li>
     </ul>
     """
     try:
+        # Attempt to send the alert email using Airflow's built-in utility
         send_email(to=destinatario, subject=assunto, html_content=corpo)
     except Exception as e:
-        # Loga sem relançar para não mascarar o erro original da task
-        log.error("Falha ao enviar e-mail de alerta: %s", e)
+        # Log the failure without raising it, preventing suppression of the original task error
+        log.error("Failed to send alert email: %s", e)
