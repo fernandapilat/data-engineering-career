@@ -93,3 +93,72 @@
 * **Business Impact Example:**
   * **From Insight to Strategy:** Analysts highlight sales drop-offs $\rightarrow$ Data Scientists build churn prediction models $\rightarrow$ Marketing/Product teams create targeted campaigns to re-engage hesitant customers.
   * **Value Creation:** True data value emerges when technical teams and business units collaborate to turn raw metrics into revenue-driving actions.
+
+# 3: Data Lifecycle
+### 3.1 Data Pipelines (ETL vs. ELT)
+* **What is a Data Pipeline?**
+  * **Definition:** A sequence of automated steps designed to extract raw data from multiple sources (APIs, databases, sensors), transform it into a structured format, and load it into analytical environments for business consumption.
+  * **The Restaurant Analogy:** Just as raw ingredients must be sourced, prepped (*mise en place*), and cooked before serving a dish, raw data requires processing before driving insights.
+* **Architecture Comparison: ETL vs. ELT**
+  * **ETL (Extract, Transform, Load):** Data is extracted, cleaned and transformed in-memory/transit, and then stored into target data warehouses.
+  * **ELT (Extract, Load, Transform):** Raw data is loaded directly into modern, high-performance data lakes or warehouses first, and transformations occur on-demand later.
+  * **Architectural Selection:** No single architecture is universally superior; selection depends on data volume, compute capabilities, latency needs, or hybrid approaches combining both.
+* **Why Build Data Pipelines?**
+  * **Standardization & Consistency:** Unifies disparate data representations (e.g., resolving ambiguity between US `MM/DD/YYYY` vs. BR `DD/MM/YYYY` date formats and timezones).
+  * **Data Reliability:** Eliminates inconsistencies that could compromise critical business operations, such as financial close-outs or executive reporting.
+
+### 3.2 Deep Dive: Hybrid Pipeline Architecture (ETL + ELT)
+* **Concept & Contextualization:**
+  * **Hybrid Approach:** Combines ETL and ELT within the same data pipeline to leverage the strengths of both frameworks based on source characteristics and latency requirements.
+* **Motivations for Adoption:**
+  * **Operational Flexibility:** Allows engineers to tailor pipelines per dataset (e.g., fast loading high-frequency streaming data for later transformation vs. pre-validating sensitive batch data).
+  * **Resource Optimization:** Offloads heavy transformations to scalable storage compute (e.g., Data Lakes/Warehouses) post-ingestion while reserving pre-transformation for critical early-stage filtering.
+  * **Business Adaptability:** Dynamically adjusts transformation timing to accommodate fluctuating data volume, velocity, and variety.
+* **Challenges & Best Practices:**
+  * **Managing Complexity:** Requires robust orchestration tools to coordinate mixed real-time and batch streams effectively.
+  * **Quality & Consistency Control:** Demands dual-layer data quality checks (both at ingestion and post-load transformations) to maintain integrity.
+  * **Documentation & Lineage:** Essential to maintain up-to-date system documentation and data lineage to track transformations occurring at different pipeline stages.
+
+### 3.3 Why We Need a Data Lifecycle
+* **Continuous Data Lifecycle:**
+  * **End-to-End Management:** Covers the entire timeline of data from initial creation/ingestion, storage, usage, and archiving down to final deletion.
+  * **Risks of Unstructured Lifecycles:** Prevents data fragmentation, version mismatches, and conflicting business logic across departments (e.g., Marketing defining "active users" as 60 days vs. Sales defining it as 90 days).
+* **Storage Optimization & Governance:**
+  * **Cost & Volume Control:** Storing unlimited historical data indefinitely is cost-prohibitive. Data should transition across storage tiers (e.g., hot storage for immediate access $\rightarrow$ cold/archive storage for compliance needs).
+  * **Regulatory Compliance:** Aligns retention policies with legal frameworks (such as LGPD/GDPR or industry standards) requiring data to be held for specific windows (e.g., 5 to 10 years) before secure disposal.
+* **Core Benefits:**
+  * **Governance:** Establishes clear policies for retention, access control, quality checks, and lineage.
+  * **Security & Reliability:** Protects sensitive records and ensures operational data remains trustworthy for executive decision-making.
+
+  ### 3.4 Data Collection and Ingestion
+* **Data Sources & Extraction:**
+  * **Diverse Inputs:** Ingestion gathers data from multiple operational origins, including internal transaction systems, third-party APIs, relational databases, and IoT sensors (e.g., equipment health monitoring in manufacturing).
+  * **Security & Reliability:** Ingestion pipelines must guarantee secure and fault-tolerant transit before reaching downstream processing layers.
+* **Ingestion Patterns: Batch vs. Streaming:**
+  * **Batch Ingestion:** Processes large volumes of data in predefined time intervals (e.g., hourly, daily, or monthly runs). Optimized for high-throughput, non-latency-sensitive workloads.
+  * **Streaming Ingestion:** Captures data continuously as events occur (near real-time). Handles smaller payload sizes continuously, ideal for low-latency business requirements.
+
+  ### 3.5 Data Storage
+* **Importance of Storage:**
+  * **Availability & Reuse:** Enables organizations to archive, query, analyze, and reuse historical data for operational needs and business insights.
+* **Transactional vs. Analytical Layers:**
+  * **Transactional Layer (OLTP):** Focuses on real-time application transactions (e.g., e-commerce purchases), requiring high safety, speed, and reliability without heavy analytical workloads.
+  * **Analytical Layer (OLAP):** Designed specifically for heavy processing, business intelligence, data science, and analytics, shielding transactional systems from performance degradation.
+* **Storage Architectures:**
+  * **Data Warehouse:** Highly structured, organized storage tailored specifically for business analytics and reporting.
+  * **Data Lake:** Scalable storage designed for massive volumes of multi-format data (structured, semi-structured, and unstructured). Often used to ingest and preserve raw data streams for future, yet-to-be-defined analytical use cases.
+
+  ### 3.6 Data Processing and Transformation
+* **Challenges of Raw Data:**
+  * **Data Quality Risks:** Unprocessed raw data often contains duplicates, nulls, inconsistent date/time formats, and mismatched data types (e.g., text vs. numeric).
+  * **Business Impact:** Uncleaned raw data distorts metrics (such as reporting inflated revenue due to duplicated records) and impedes cross-table joins.
+* **Core Transformation Techniques:**
+  * **Data Cleaning:** Deduplicating records and handling missing/null values.
+  * **Standardization:** Enforcing uniform column naming and date/time formats.
+  * **Aggregation:** Grouping atomic records into summary metrics (e.g., total sales grouped by region).
+  * **Enrichment:** Joining raw data with auxiliary datasets to add contextual information (e.g., mapping postal codes to geographic regions).
+* **Marketplace Pipeline Example:**
+  * **Input (Raw Sales Data):** Customer name, postal code, transaction amounts.
+  * **Processing:** Filter nulls $\rightarrow$ remove duplicate orders $\rightarrow$ enrich postal codes with regions $\rightarrow$ aggregate total daily sales and average order value (AOV).
+* **Execution Timing:**
+  * Transformations can occur pre-storage (ETL) or post-storage (ELT), or across multi-stage pipelines where preliminary cleaning happens upon ingestion and advanced enrichment occurs post-loading.
