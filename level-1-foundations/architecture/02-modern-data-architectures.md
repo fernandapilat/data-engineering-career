@@ -49,3 +49,47 @@
   * **OLTP:** *Runs the business.* Focuses on detail-level accuracy, row-level point lookups, and ACID-guaranteed atomic writes.
   * **OLAP:** *Evolves the business.* Focuses on aggregated views, multi-dimensional slicing and dicing, and mass read performance.
   * **Separation of Concerns:** Isolating OLAP workloads into dedicated analytical environments prevents table locking, resource contention, and operational degradation during checkout or payment processing.
+
+### 1.4 Comparing OLTP and OLAP (Side-by-Side Architectural Summary)
+* **Architectural Purpose:**
+  * **OLTP (Operational):** Drives the daily operations of the business in real time (*runs the business*).
+  * **OLAP (Strategic):** Delivers aggregated historical perspectives for decision-making (*evolves the business*).
+* **Side-by-Side Comparison:**
+
+| Dimension | OLTP (Online Transaction Processing) | OLAP (Online Analytical Processing) |
+| :--- | :--- | :--- |
+| **Primary Focus** | Day-to-day operations & live transactions | Strategic analysis & historical trends |
+| **Time Horizon** | Present state / Real-time operational data | Historical data (months, years, decades) |
+| **Query Nature** | Targeted point-lookups, simple CRUD actions | Complex queries, joins, windowing & aggregations |
+| **Data Structure** | Highly normalized (3NF) to eliminate redundancy | Dimensional / Multi-dimensional (Star/Snowflake Schema) |
+| **Optimization Target** | High concurrency, low latency, write consistency | High read throughput, massive scan performance |
+| **Data Modifications** | Continuous real-time insert/update operations | Scheduled periodic batch loads |
+| **Primary Users** | End-users, operational staff, automated APIs | Analysts, data scientists, executives, managers |
+| **System Failure Impact**| Immediate loss of sales or operational outage | Delayed business intelligence & reporting |
+
+* **Architectural Key Takeaways:**
+  * **OLTP vs. OLAP Mindset:** OLTP records *what* happens (details); OLAP explains *why* it happened (aggregations).
+  * **Workload Isolation:** Running heavy analytical workloads against operational databases creates contention for CPU, RAM, and storage I/O, leading to table locks and degraded user experience.
+  * **Roadmap for "Minishop":** Moving forward, Minishop will establish two explicit, decoupled environments—a transactional OLTP database driving the application, and an analytical environment laying the groundwork for the Data Warehouse.
+
+### 1.5 Designing the Minishop Operational OLTP System
+* **Context & Core Objective:**
+  * Before designing Data Warehouses or analytical layers, the operational **OLTP (Online Transaction Processing)** system must be explicitly defined as it serves as the single source of truth for all downstream analytical pipelines.
+  * **Minishop Business Scope:** An e-commerce platform processing physical product sales online—handling customer registration, product catalog browsing by categories, cart checkout, order processing, payments, inventory movements, and invoicing.
+
+* **Conceptual Data Modeling (Chen ERD Methodology):**
+  * **Requirements Gathering:** Conducted interviews with key business stakeholders to identify operational workflows, business rules, and entities.
+  * **Entity-Relationship Identification:** Extracted nouns (Entities & Attributes) and verbs (Relationships) from business specifications:
+    * **Entities:** `Customer`, `Order`, `OrderItem`, `Product`, `Category`, `Inventory`, `Invoice`.
+    * **Relationships:** Customer *places* Order, Order *contains* OrderItem, OrderItem *references* Product, Product *belongs to* Category, OrderItem *debits* Inventory, Order *generates* Invoice.
+  * **Cardinality Definition:** Evaluated operational rules to assign exact relationship bounds:
+    * `Customer` to `Order`: $1 : N$ (One customer can place multiple orders; an order belongs to exactly one customer).
+    * `Order` to `OrderItem`: $1 : N$ (An order contains one or more line items).
+    * `OrderItem` to `Product`: $N : 1$ / $0 : N$ (A product can exist without being sold; an item line references one specific product).
+    * `Product` to `Category`: $N : 1$ / $0 : 1$ (Categories can exist before products are assigned).
+    * `Order` to `Invoice`: $1 : 1$ (Business rule: direct single payment/invoice per order).
+    * `OrderItem` to `Inventory`: $1 : 1$ (Each ordered item triggers a specific inventory reduction movement).
+
+* **Architectural Takeaways:**
+  * **Business Rule Validation:** ER Diagrams (Chen notation) represent the *conceptual model*. Validating cardinailities directly with business domain experts ensures that the logical schema faithfully mirrors operational realities.
+  * **Transition to Logical Design:** The conceptual ER diagram provides the blueprint for translating business entities and relationships into physical relational database artifacts (Tables, Columns, Primary Keys, and Foreign Keys).
