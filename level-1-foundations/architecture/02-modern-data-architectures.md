@@ -93,3 +93,31 @@
 * **Architectural Takeaways:**
   * **Business Rule Validation:** ER Diagrams (Chen notation) represent the *conceptual model*. Validating cardinailities directly with business domain experts ensures that the logical schema faithfully mirrors operational realities.
   * **Transition to Logical Design:** The conceptual ER diagram provides the blueprint for translating business entities and relationships into physical relational database artifacts (Tables, Columns, Primary Keys, and Foreign Keys).
+
+### 1.6 Logical OLTP Modeling and Schema Implementation
+* **Conceptual-to-Logical Mapping Rules:**
+  * **Entities to Tables:** Strong entities identified in the conceptual model (`Customer`, `Order`, `Product`, `Category`, `OrderItem`, `Invoice`, `Inventory`) map directly to relational tables.
+  * **Attributes to Columns:** Entity properties become table attributes. Each table receives a Primary Key (PK) to uniquely identify individual records (e.g., `customer_id`, `order_id`).
+  * **1:N Relationships (Foreign Keys):** Implemented by placing a Foreign Key (FK) on the "N" side of the relationship (e.g., `customer_id` added to `Order`, `category_id` added to `Product`).
+* **Special Relational Implementations in Minishop:**
+  * **Composite Primary Key (`OrderItem`):** The item table resolves relationships between `Order` and `Product` ($1 : N$) using a composite Primary Key made of `(order_id, product_id)`, which also function as Foreign Keys.
+  * **1:1 Relationships & Unique Constraints (`Invoice`):** Decoupled into a standalone entity rather than an attribute on `Order` to support future financial/billing domain expansion. Enforced via a `UNIQUE` constraint on `order_id`.
+  * **Decoupled Inventory Control (`Inventory`):** Designed as an independent entity to log individual inventory stock movements (debits/credits) tied to orders, allowing scalable integration with future procurement systems.
+
+* **Complete Minishop OLTP Blueprint:**
+  * Establishes a 3NF normalized schema enforcing referential integrity, low-latency writes, and strict transaction isolation—completing the operational baseline for the course.
+
+### 1.7 Supplemental Reading: Definition of Cardinalities
+* **Concept and Importance:**
+  * **Cardinalities:** Quantitative rules that define how instances of one entity relate to instances of another, establishing minimum and maximum occurrences allowed.
+  * Ensure the data model accurately reflects business constraints and preserves stored data integrity.
+* **Business Question Approach:**
+  * Using practical operational questions (e.g., "How many orders can a customer place?", "How many items does each order include?") to determine relationship types ($1:1$, $1:N$, or $N:N$).
+  * Promotes direct validation with domain experts to align the conceptual model with operational reality.
+* **Impact on the Data Model:**
+  * Guides the transition from conceptual to logical models by defining the correct application of primary and foreign keys.
+  * Many-to-many ($N:N$) relationships require associative tables to eliminate ambiguities and simplify future queries.
+  * Prevents structural inconsistencies, such as orphaned records or business rule violations.
+* **Practical Considerations:**
+  * Involves handling exceptions, edge cases, and optional relationships that allow null values or the absence of records.
+  * Requires balancing operational flexibility with referential integrity constraints.
