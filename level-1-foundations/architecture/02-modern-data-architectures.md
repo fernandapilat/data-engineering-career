@@ -121,3 +121,79 @@
 * **Practical Considerations:**
   * Involves handling exceptions, edge cases, and optional relationships that allow null values or the absence of records.
   * Requires balancing operational flexibility with referential integrity constraints.
+
+## 2: Data Warehouse and Dimensional Modeling
+
+### 2.1 Concept of the Data Warehouse
+* **Introduction & Business Motivation:**
+  * While operational OLTP systems (like the Minishop e-commerce app) handle day-to-day transactions, they struggle with complex, historical queries (e.g., multi-year revenue aggregation by category for recurring customers).
+  * Executing heavy analytical queries directly against OLTP databases creates resource contention, locking, and severe performance degradation that can impact customer sales.
+* **Bill Inmon's Classical Definition:**
+  * **Subject-Oriented:** Focuses on core business themes (e.g., sales, customers, products) rather than individual application processes.
+  * **Integrated:** Consolidates and harmonizes data from diverse operational sources (MySQL transactional databases, external payment gateways, marketing systems, flat files) into a single source of truth.
+  * **Non-Volatile:** Preserves historical states by loading data without altering past records, ensuring analytical stability over time.
+  * **Time-Variant:** Tracks the evolution of business data across months, years, or decades to enable historical trend analysis, seasonal tracking, and forecasting.
+* **Architectural & Modeling Differences:**
+  * Adopts dimensional modeling structures (such as the Star Schema with a central Fact table and surrounding Dimension tables) to simplify joins and accelerate mass aggregations.
+  * Separates operational execution from strategic intelligence, allowing OLTP and Data Warehouse systems to coexist and complement each other without resource friction.
+
+
+### 2.2 Foundations of Dimensional Modeling
+* **Core Philosophy:**
+  * Unlike relational OLTP modeling (which centers on processes and normalization), **Dimensional Modeling** is driven by business questions: *What* do we want to analyze, and *How* do we want to analyze it?
+* **Indicators vs. Dimensions:**
+  * **Indicators (Metrics/Measures):** Numerical, measurable facts that answer *What* is being analyzed (e.g., total sales revenue, units sold).
+  * **Dimensions (Perspectives):** Contextual attributes that answer *How* metrics are observed, sliced, and diced (e.g., by customer, product, region, or time).
+* **The Indicator-Dimension Matrix:**
+  * A analytical design tool placing Dimensions as columns and Indicators as rows to identify meaningful intersections and business contexts.
+  * Inputs are gathered by interviewing business users regarding decision-making needs rather than system mechanics.
+* **Granularity & Dimension Organization:**
+  * **Input (Leaf) Level:** The root entity directly tied to the generation of the indicator (e.g., `Customer` is the input level for sales transactions, while `City` is a higher-level attribute/hierarchy).
+  * **Hierarchical Levels vs. Attributes:**
+    * **Hierarchical Levels:** Formal entities with unique codes/descriptors forming structured parent-child relationships (e.g., $Day \rightarrow Month \rightarrow Quarter \rightarrow Year$ or $City \rightarrow State \rightarrow Country$).
+    * **Attributes:** Descriptive, low-cardinality flags or text buckets (e.g., age bracket `[Young, Adult, Senior]` or city type `[Capital, Interior]`).
+* **The Central Role of the Time Dimension:**
+  * In OLTP, time is a simple operational timestamp. In a Data Warehouse, **Time** is a required, fully structured dimension.
+  * Acts as the universal analytical axis present across all indicators, incorporating calendar hierarchies, fiscal periods, holidays, and business flags to enable trend detection and seasonality analysis.
+
+### 2.3 Translating the Matrix into Physical Tables (Star, Snowflake, and Parent-Child Schemas)
+* **Transitioning to Physical Design:**
+  * Once dimensions, input (leaf) levels, hierarchical levels, and attributes are mapped in the Indicator-Dimension Matrix, they must be translated into physical Data Warehouse tables.
+  * The two foundational dimensional architectures for physical implementation are the **Star Schema** and the **Snowflake Schema**.
+* **Star Schema vs. Snowflake Schema:**
+
+| Characteristic | Star Schema | Snowflake Schema |
+| :--- | :--- | :--- |
+| **Structure** | Central Fact table surrounded by fully denormalized Dimension tables | Central Fact table surrounded by normalized, multi-table Dimension hierarchies |
+| **Join Complexity** | Low (single-hop joins from Fact to Dimension) | High (multi-hop joins across hierarchical sub-tables) |
+| **Query Performance** | Superior read and aggregation throughput | Slower due to increased join overhead |
+| **Storage & Redundancy** | Higher storage footprint due to repeated upper-level attributes | Minimal data redundancy; smaller storage footprint |
+| **Schema Maintenance** | Harder to modify or add new attributes to large tables | Easier structural updates and attribute modifications |
+
+* **Handling Regular vs. Irregular (Ragged) Hierarchies:**
+  * **Regular Hierarchies:** Every leaf member traverses the exact same number of intermediate levels to reach the root (e.g., $City \rightarrow State \rightarrow Country$). Supported cleanly by both Star and Snowflake schemas.
+  * **Irregular (Ragged) Hierarchies:** Occur when intermediate levels are skipped (e.g., Principality of Monaco, where the city maps directly to the country without an intermediate state level).
+    * *Snowflake Limitation:* Structurally rigid; struggles to represent missing intermediate tables.
+    * *Star Workaround:* Requires allowing `NULL` values in intermediate level columns.
+* **Parent-Child Modeling for Complex Hierarchies:**
+  * Stores hierarchical relationships as self-referencing node pairs (`child_id`, `parent_id`) within a single table rather than fixed level columns (root nodes have `parent_id = NULL`).
+  * **Pros:** Accommodates both regular and irregular hierarchies of arbitrary depth dynamically.
+  * **Cons:** Requires complex recursive self-joins (`WITH RECURSIVE`) to aggregate data, which can degrade query performance on massive Data Warehouse volumes.
+
+### 2.4 Building the Minishop Data Warehouse (Dimensional Matrix Design)
+* **Expanding the Analytical Scope Beyond OLTP:**
+  * Designing a Data Warehouse requires blending technical OLTP schema analysis with executive stakeholder interviews to align the model with business strategy rather than mere operational mechanics.
+  * **Derived & Enriched Attributes:** Added demographic and channel dimensions not explicitly isolated in basic transactional setups (e.g., customer address $\rightarrow$ City/State; birth date $\rightarrow$ Age Bracket; sales channel $\rightarrow$ Web/Mobile App; product promotion flags; invoice due dates).
+* **Iterative & Incremental Data Warehouse Strategy:**
+  * Enterprise Data Warehouses are implemented incrementally by business domain (starting with Sales, then expanding to Inventory, Procurement, and Finance) while maintaining shared conformed dimensions across domains.
+* **Indicators (Metrics) & Business Context:**
+  * **Commercial Metrics:** Quantity Sold, Average Unit Price, and Total Order Value.
+  * **Inventory Metrics:** Inventory Outflow (tracking stock deductions tied to sales).
+  * **Financial Metrics:** Accounts Receivable (to be collected) and Overdue Balance (past-due invoices).
+* **Evaluating Indicator-Dimension Intersections (Business Relevance vs. Technical Feasibility):**
+  * Even if foreign keys allow joining two entities technically, intersections must only be modeled if they provide actionable managerial value:
+    * **Sales Indicators:** Cross with `Customer`, `City`, `State`, `Age Bracket`, `Product`, `Category`, `Promotion Status`, `Access Channel`, and `Time`.
+    * **Inventory Outflow:** Cross only with `Product`, `Category`, and `Time` (warehouse operations do not require slicing stock deductions by customer age brackets).
+    * **Financial Indicators:** Cross with `Customer` (and geographic/demographic derivatives), `Time`, and `Aging List` (financial due-date buckets such as 0–15 days, 16–30 days), omitting product-level granularity.
+* **Business Terminology Alignment:**
+  * Dimension names must reflect business vocabulary rather than technical source column names (e.g., naming the payment delinquency bucket dimension **Aging List** per finance team conventions).
