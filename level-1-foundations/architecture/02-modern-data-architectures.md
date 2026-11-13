@@ -197,3 +197,18 @@
     * **Financial Indicators:** Cross with `Customer` (and geographic/demographic derivatives), `Time`, and `Aging List` (financial due-date buckets such as 0–15 days, 16–30 days), omitting product-level granularity.
 * **Business Terminology Alignment:**
   * Dimension names must reflect business vocabulary rather than technical source column names (e.g., naming the payment delinquency bucket dimension **Aging List** per finance team conventions).
+
+### 2.5 Fact Tables, Degenerate Attributes, and Surrogate Keys
+* **Grouping Indicators into Fact Tables:**
+  * Analyze the Indicator-Dimension Matrix row by row: indicators sharing the exact same set of intersecting dimensions belong together in the same **Fact Table**.
+  * **Composite Primary Keys:** A Fact table's granularity is defined by the composite Primary Key formed by the leaf-level Foreign Keys of its intersecting dimensions. Events matching the exact same dimension combination are aggregated rather than duplicated.
+* **Degenerate Attributes (Degenerate Dimensions):**
+  * Operational identifiers directly tied to a business event that do not justify their own standalone dimension table (e.g., `order_number`, `invoice_number`).
+  * Stored directly inside the Fact table.
+  * **Granularity & Performance Tradeoff:** Including degenerate attributes increases fact table granularity (preventing row consolidation and multiplying row counts) and widens the table. They should only be included when genuinely required for strategic decisions; otherwise, operational details belong in auxiliary drill-through tables.
+* **Surrogate Keys (SK):**
+  * Sequential, meaningless integer identifiers generated internally within the Data Warehouse to serve as the Primary Key for dimension leaf levels and Foreign Keys inside Fact tables.
+  * **Natural Keys (NK):** Original business identifiers from source OLTP systems are retained as regular attributes within dimension tables for lineage and tracking, never as primary join keys.
+  * **Architectural Benefits:**
+    * **Join Performance:** Integer-to-integer joins execute significantly faster than string, composite, or long alphanumeric key joins across billions of fact rows.
+    * **Storage & Indexing:** Compact integer keys reduce disk footprint and produce smaller, faster database indexes (including for the `Time` dimension, where dates are mapped to integer keys).
