@@ -212,3 +212,42 @@
   * **Architectural Benefits:**
     * **Join Performance:** Integer-to-integer joins execute significantly faster than string, composite, or long alphanumeric key joins across billions of fact rows.
     * **Storage & Indexing:** Compact integer keys reduce disk footprint and produce smaller, faster database indexes (including for the `Time` dimension, where dates are mapped to integer keys).
+
+### 2.6 Completing the Minishop Data Warehouse Schema (Dimensions, Fact Tables, and Mixed Modeling)
+* **Consolidating Dimensions (Column-wise Analysis):**
+  * Candidates sharing the exact same indicator intersections are evaluated to form unified dimensions:
+    * **`Customer` Dimension (Star Schema):** Consolidates `Customer` (input/leaf level), `City`, and `State` into a formal geographic hierarchy ($\text{State} \rightarrow \text{City} \rightarrow \text{Customer}$), while `Age Bracket` (derived from birth date) is stored as a descriptive attribute.
+    * **`Product` Dimension (Snowflake Schema):** Consolidates `Product` (leaf level) and `Category` (upper level) into a normalized two-table hierarchy ($\text{Category} \rightarrow \text{Product}$) for instructional demonstration.
+    * **Independent Dimensions (`Promotion` & `Access Channel`):** Although sharing similar intersections, they exhibit a many-to-many ($N:M$) relationship with products and orders (any product can be bought on promotion across any device channel), keeping them as standalone dimensions.
+    * **`Aging List` Dimension:** Standalone financial dimension categorizing receivable and overdue intervals.
+    * **`Time` Dimension:** Standardized universal axis crossing all facts, containing calendar hierarchies ($\text{Year} \rightarrow \text{Semester} \rightarrow \text{Quarter} \rightarrow \text{Bimester} \rightarrow \text{Month} \rightarrow \text{Week} \rightarrow \text{Day}$) and operational flags (weekday, weekend, holiday).
+
+* **Defining the Minishop Fact Tables (Row-wise Analysis):**
+  * Grouping indicators with identical dimension intersections yields three distinct Fact tables, each anchored by composite Primary/Foreign Surrogate Keys (`PK`, `SK`, `FK`):
+    1. **`FACT_SALES` (`FATO 1`):**
+       * *Keys:* `customer_sk`, `product_sk`, `promotion_sk`, `access_sk`, `time_sk`
+       * *Measures:* `quantity`, `unit_price`, `total_value`
+    2. **`FACT_INVENTORY` (`FATO 2`):**
+       * *Keys:* `product_sk`, `time_sk`
+       * *Measures:* `inventory_outflow`
+    3. **`FACT_FINANCIAL` (`FATO 3`):**
+       * *Keys:* `customer_sk`, `aging_list_sk`, `time_sk`
+       * *Measures:* `accounts_receivable`, `overdue_balance`
+
+* **Architectural Takeaways:**
+  * **Hybrid vs. Standardized Schemas:** While Minishop combines Star (`Customer`) and Snowflake (`Product`) implementations didactically, production Data Warehouses generally standardize on a single paradigm (predominantly Star Schema).
+  * **Operational vs. Analytical Coexistence:** The finalized architecture pairs the normalized OLTP operational database with the decoupled dimensional DW, setting the stage for **ETL (Extract, Transform, Load)** pipelines to clean, transform, and populate the warehouse.
+
+  ### 2.7 Supplemental Reading: Input Dimension in Dimensional Modeling
+* **Conceptual Definition:**
+  * The **Input (Leaf) Dimension** represents the direct origin of the business event that generates an indicator.
+  * Unlike descriptive attributes or upper hierarchical levels used for grouping and slicing, the input dimension serves as the atomic starting point of analysis, intrinsically tied to the original transaction.
+* **Fundamental Role in the Analytical Structure:**
+  * Establishes the primary anchor entity around which the entire dimension table is organized (e.g., `Customer` is the input dimension for a sale, while `City` and `State` are built on top as hierarchical roll-ups).
+  * Ensures that all metrics remain strictly aligned with the business logic of the initial event, preventing analytical misinterpretations or aggregation conflicts.
+* **Selection Criteria for Input Dimensions:**
+  * **Origin of the Indicator:** The entity born alongside the metric at the moment the event occurs (e.g., the customer executing the purchase).
+  * **Direct Relationship with the Transaction:** Connects directly to the operational event without requiring intermediate entity lookups (unlike geographic cities, which depend on customer records).
+  * **Business Domain Alignment:** Reflects how domain specialists conceptually view the transaction's root subject without derived transformations.
+* **Impact on Dimensional Design:**
+  * Anchoring dimensions at the true leaf level enables clean hierarchy construction, avoids structural redundancy, and supports fast, accurate analytical queries.
