@@ -251,3 +251,49 @@
   * **Business Domain Alignment:** Reflects how domain specialists conceptually view the transaction's root subject without derived transformations.
 * **Impact on Dimensional Design:**
   * Anchoring dimensions at the true leaf level enables clean hierarchy construction, avoids structural redundancy, and supports fast, accurate analytical queries.
+
+## 3: ETL Process in the Data Warehouse
+
+### 3.1 Introduction to the ETL Process
+* **Operationalizing the Data Warehouse:**
+  * A dimensional model with empty tables has no business value until populated; **ETL (Extract, Transform, Load)** bridges operational sources (such as the Minishop OLTP database) and the analytical Data Warehouse.
+  * ETL is not a raw table copy—it converts operational records into consistent, business-aligned analytical memory across multiple heterogeneous sources (transactional databases, APIs, web services, partner feeds, spreadsheets).
+* **Core ETL Stages:**
+  * **Extract (E):** Reliably pulls raw data from operational databases, files, or external APIs/services without yet applying complex business logic.
+  * **Transform (T):** Applies business rules, standardizes formats, cleanses/validates data, derives analytical attributes, and resolves keys—housing most of the warehouse's business logic.
+  * **Load (L):** Writes transformed records into Dimension and Fact tables while enforcing data integrity, versioning, and historical consistency.
+* **Key-Lookup & Surrogate Key Mechanics:**
+  * **Lookup (referred to as `LOCAP` in the lecture):** Resolves natural keys from source systems against dimension tables—either checking if a dimension member already exists (**Dimension Lookup**) or translating natural keys into surrogate keys when loading Fact tables (**Fact Lookup**).
+  * **Surrogate Keys (SK) vs. Natural Keys (NK):** Sequential integer surrogate keys anchor dimension leaf levels and fact foreign keys for fast joins and indexing, while natural keys remain stored as attributes for source traceability.
+  * **Slowly Changing Dimensions — SCD Type 2:** When a tracked attribute changes over time (e.g., a customer moves to a new city), SCD Type 2 inserts a **new row** with a **new surrogate key** for the same natural key rather than overwriting history, preserving point-in-time analytical accuracy.
+* **Initial vs. Incremental Loads:**
+  * **Initial Load:** Populates the Data Warehouse for the first time with the available historical baseline from source systems.
+  * **Incremental Load:** Periodically ingests only new or modified records since the last successful run to keep the warehouse current efficiently.
+
+### 3.2 Lookup and Surrogate Keys
+* **Surrogate Key (SK) Characteristics & Role:**
+  * Unique integer identifiers (often auto-incremented) assigned inside the Data Warehouse to replace source natural keys as dimension primary keys and fact foreign keys.
+  * Can be generated sequentially or via non-sequential unique integer strategies; the strict requirement is uniqueness within the scope of the key.
+  * **Performance Advantage:** Integer joins, indexes, and storage footprints outperform string, composite, or alphanumeric joins at analytical scale.
+  * **Dual ETL Lifecycle:** Created and stored on dimension leaf tables first, then referenced as foreign keys when loading fact tables.
+* **Dimension Load & Lookup Logic:**
+  * Uses the **Natural Key (NK)** from the source system as the reference key to check whether a dimension member already exists in the DW.
+  * **Initial Load:** Dimension starts empty; every incoming natural key is new, triggering an insert and a newly generated SK.
+  * **Subsequent Loads (SCD Type 1 Behavior):**
+    * If the NK does not exist in the dimension, a new row is inserted with a new SK.
+    * If the NK already exists, existing attributes are overwritten in place (`UPDATE`) with the incoming values rather than doing expensive column-by-column equality checks, reusing the existing SK.
+* **Fact Table Load & Lookup Logic:**
+  * Incoming fact rows arrive carrying source natural keys.
+  * The ETL performs a **Fact Lookup** against each related dimension table to resolve each natural key into its corresponding dimension SK before inserting the fact record.
+  * Under **SCD Type 1** (where historical attribute states are not preserved), resolving the SK by NK is direct and unambiguous, setting up the transition to **SCD Type 2** historical tracking policies.
+
+### 3.3 Slowly Changing Dimensions (SCD)
+* **Why Dimension Update Policies Matter:**
+  * Overwriting attributes in place when a tracked dimension attribute changes (such as a customer moving to a new city) shifts historical fact aggregations onto the new attribute value, distorting past reporting.
+* **Classic SCD Types:**
+  * **SCD Type 1 (Overwrite):** Overwrites existing attribute values in place without keeping history; reuses the same Surrogate Key. Best suited for non-historical corrections (e.g., fixing spelling typos).
+  * **SCD Type 2 (Historical Versioning):** Preserves full history by closing out the previous version and inserting a new row with a new Surrogate Key for the same Natural Key whenever a tracked attribute changes (e.g., customer address, age bracket, risk tier, branch/region).
+  * **SCD Type 3 (Limited History):** Retains current and previous values in dedicated columns; rarely used in practice.
+* **Resolving the Right Surrogate Key in SCD Type 2:**
+  * **Current Flag (`IsCurrent` / Active Flag):** Marks the active row as `true` and prior rows as `false`. Works for forward loads, but fails during historical backfills/reprocessing because loading past events against the current row misattributes older facts to newer states.
+  * **Effective Date Ranges (`StartDate`, `EndDate`):** Each dimension version carries validity boundaries (typically spanning database min/max boundary dates for initial/open-ended versions, with prior versions closed the day before a change). Fact lookups match both the **Natural Key** and the **event date falling within `[StartDate, EndDate]`**, ensuring accurate point-in-time attribution for both ongoing and retroactive loads.
