@@ -297,3 +297,58 @@
 * **Resolving the Right Surrogate Key in SCD Type 2:**
   * **Current Flag (`IsCurrent` / Active Flag):** Marks the active row as `true` and prior rows as `false`. Works for forward loads, but fails during historical backfills/reprocessing because loading past events against the current row misattributes older facts to newer states.
   * **Effective Date Ranges (`StartDate`, `EndDate`):** Each dimension version carries validity boundaries (typically spanning database min/max boundary dates for initial/open-ended versions, with prior versions closed the day before a change). Fact lookups match both the **Natural Key** and the **event date falling within `[StartDate, EndDate]`**, ensuring accurate point-in-time attribution for both ongoing and retroactive loads.
+
+### 3.4 Time Dimension and Fact Load Policies
+* **Time Dimension Design & SCD Type 1 Behavior:**
+  * **Smart Integer Surrogate Keys:** Commonly formatted as `YYYYMMDD` (e.g., `20250101`), allowing straightforward numeric conversion from source dates and fast lookups/joins.
+  * **Naturally SCD Type 1:** Calendar attributes (month, quarter, year, day of week) are immutable over time, so historical versioning (SCD Type 2) is not needed; the primary challenge is ensuring complete date coverage so fact foreign keys never fail.
+* **Strategies for Populating the Time Dimension:**
+  * **Fixed Broad Range ("Lazy" Approach):** Pre-generates a wide date span (e.g., `2000`–`2099`). Guarantees coverage, but inflates the dimension with unused dates.
+  * **Fact-Driven Dates Only:** Generates dates strictly present in fact records. Avoids unused rows, but creates **gaps** (e.g., non-trading days like Sundays) that cause artificial drops or breaks in time-series charts.
+  * **Continuous Min-to-Max Range (Recommended):** Determines the minimum and maximum dates present in the fact data and generates every contiguous day across `[MinDate, MaxDate]`, balancing storage efficiency with gap-free time-series reporting.
+* **Fact Table Load & Reprocessing Policies:**
+  * **Natural Key / Degenerate Key Upsert:** Matches incoming records via a fact natural/degenerate identifier (e.g., document/invoice number) to insert new rows or overwrite existing ones. Limited when avoiding degenerate attributes or handling reversals/deletions.
+  * **Composite Surrogate Key Upsert:** Uses the composite key of dimension SKs to detect existing vs. new rows; works when granularity allows uniqueness, but becomes tricky under complex reversals or backfills.
+  * **Time-Window Delete & Reload (Recommended "Winning" Strategy):** Identifies the date range (`[StartDate, EndDate]`) of the incoming batch, deletes existing fact rows within that period, and reloads the full period with resolved lookups. Cleanly handles inserts, updates, reversals, and source deletions simultaneously—at the cost of reading and reloading the entire period batch rather than delta rows alone.
+
+### 3.5 Designing the Minishop ETL Process
+* **ETL Implementation Approaches:**
+  * **Database Stored Procedures (SQL):** Executes transformations inside the database engine. High performance when OLTP and DW share the same database platform/server, but increases SQL/procedural maintenance complexity and struggles with external sources (APIs, flat files).
+  * **General-Purpose Programming Languages (e.g., Python, C#, Java):** Offers maximum flexibility to connect to diverse sources, APIs, and files and apply custom logic, but requires building lookups, incremental controls, error handling, and external schedulers (e.g., `cron`, Task Scheduler) from scratch.
+  * **Specialized ETL Tools:** Provide built-in connectors, visual transformation libraries, lookup/SCD components, scheduling, and parallelism to speed up enterprise delivery, at the cost of licensing fees, team training, and vendor lock-in.
+* **Applying SCD Policies to Minishop Dimensions:**
+  * **`Product` (SCD Type 1):** Product variants/modifications typically receive a new SKU/identifier rather than mutating an existing item's identity in place, so overwriting is sufficient.
+  * **`Promotion` & `Time` (SCD Type 1):** Simple/static or immutable structures where historical versioning adds no analytical value.
+  * **`Customer` (SCD Type 2):** Customers retain their natural identifier while evolving over time (e.g., moving cities, changing age bracket), requiring historical versions tracked via `ValidFrom` and `ValidTo` validity dates and distinct surrogate keys (`ID_CLIENTE`).
+* **Minishop `CLIENTE` Dimension Schema (SCD Type 2):**
+  * Keys & core fields: `ID_CLIENTE` (`PK`/`SK`), `COD_CLIENTE`, `NOME_CLIENTE`
+  * Geographic hierarchy & attribute: `COD_CIDADE`, `NOME_CIDADE`, `COD_ESTADO`, `NOME_ESTADO`, `FAIXA_ETARIA`
+  * Effective date tracking: `VALID_FROM`, `VALID_TO`
+
+### 3.6 Orchestrating the Minishop ETL Pipeline
+* **Global Time-Window Parameters (`Data_Inicial`, `Data_Final`):**
+  * Drive batch extraction, delete-and-reload reprocessing, and scheduled automation (e.g., dynamically computed rolling windows such as the last 30 days running daily at `01:00 AM`, or monthly runs on the 5th business day).
+* **Dimension Load Workflows:**
+  * **`Product` (Snowflake, SCD Type 1):** Joins OLTP `PRODUTO` and `CATEGORIA`, runs SCD Type 1 lookup, and loads `CATEGORIA` **before** `PRODUTO` to satisfy foreign key constraints.
+  * **`Customer` (SCD Type 2):** Reads `CLIENTE`, derives city/state from address and age bracket from birth date in parallel, applies SCD Type 2 lookup (new SK when new or tracked location/attributes change), and loads `CLIENTE`.
+  * **`Access` (`ACESSOS`, SCD Type 1):** Selects `DISTINCT` sales channel values from orders within `[Data_Inicial, Data_Final]`, applies SCD Type 1 lookup, and inserts any new channels.
+  * **`Promotion` (`PROMOÇÃO`, SCD Type 1):** Uses constant boolean values (`TRUE` / `FALSE`) with SCD Type 1 lookup.
+  * **`Aging List` (SCD Type 1):** Populates receivable and overdue aging buckets from a constant definition set using SCD Type 1 lookup.
+  * **`Time` (`TEMPO`, SCD Type 1):** Generates contiguous days across `[Data_Inicial, Data_Final]`, formats integer keys as `YYYYMMDD`, computes calendar/holiday/business-day attributes in parallel, and loads via SCD Type 1 lookup.
+* **Fact Table Load Workflows (Delete-and-Reload per Window):**
+  * **`FACT_SALES` (`FATO 1`):** Deletes existing rows in `[Data_Inicial, Data_Final]`, joins orders/items/products in the window, performs SCD Type 2 `Customer` lookup (matching customer + order date against validity range) plus SCD Type 1 lookups for `Product`, `Access`, `Promotion`, and `YYYYMMDD` `Time`, and inserts quantity, unit price, and item value.
+  * **`FACT_INVENTORY` (`FATO 2`):** Deletes `[Data_Inicial, Data_Final]` in parallel with reading inventory movements in the window, resolves `Product` and `YYYYMMDD` `Time` SKs, and inserts stock outflow.
+  * **`FACT_FINANCIAL` (`FATO 3`):** Deletes `[Data_Inicial, Data_Final]`, reads invoices in the window, resolves `Customer` (SCD Type 2 by date) and `YYYYMMDD` `Time` SKs, calculates days overdue or days until due relative to load/reference date, classifies each invoice into an `Aging List` bucket (`CASE`), looks up `Aging List` SK, and inserts invoice amounts.
+* **End-to-End Orchestration & Next Frontier:**
+  * Execute independent dimension loads first (respecting parent-child order like `CATEGORIA` $\rightarrow$ `PRODUTO`), then execute Fact loads in parallel once dimensions are updated—setting the stage for modern **Data Lake** concepts.
+
+### 3.7 Supplemental Reading: SCD Type 3 (Limited History)
+* **Conceptual Definition:**
+  * Preserves limited attribute history—typically the **current value** alongside **one previous value**—without generating new dimension rows or surrogate keys.
+  * Ideal when analytical questions compare the present state against the immediately preceding state rather than requiring a complete historical timeline.
+* **Mechanics & Schema Pattern:**
+  * Adds companion column(s) (e.g., `previous_<attribute>`) to store the prior value while updating the primary column in place.
+  * Example (`categoria_risco`): before overwriting `categoria_risco` with the new value, copy the existing value into `categoria_risco_anterior` on the same row.
+* **Tradeoffs (Pros & Cons):**
+  * **Pros:** Simpler implementation than SCD Type 2; avoids row multiplication, surrogate key versioning, and effective-date range management; supports direct side-by-side comparison in a single row.
+  * **Cons:** Cannot track full change history or older states beyond the retained prior snapshot; less flexible than SCD Type 2 when point-in-time historical accuracy across multiple changes is required.
