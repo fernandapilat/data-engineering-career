@@ -416,3 +416,41 @@
 * **ETL & Python Integration:**
   * Reading pre-compressed, column-pruned Parquet files simplifies and speeds up downstream ETL pipelines feeding a Data Warehouse.
   * Example (`pandas` + `pyarrow`): `df.to_parquet('dados.parquet', engine='pyarrow')`.
+
+## 5: Lakehouse Architecture
+
+### 5.1 Introduction to the Lakehouse
+* **Why Re-Evaluate Separate Data Lake & Data Warehouse Tiers:**
+  * Keeping a file-based Data Lake (`CSV`, `JSON`, `Parquet`, `Avro`) separate from a relational/dimensional Data Warehouse often requires moving and duplicating curated datasets through additional ETL steps.
+  * When Gold-tier consolidated datasets already exist in the lake, a natural question arises: can analytical structures be queried directly over lake storage without redundant data movement?
+* **Core Lakehouse Concept:**
+  * Converges Data Lake flexibility and low-cost scalable file storage with Data Warehouse analytical capabilities—exposing lake files as structured analytical tables queryable via SQL with governance and versioning.
+  * Cuts unnecessary data movement between storage and analytics layers while preserving raw data storage and modern distributed processing.
+* **Evolution, Not Automatic Erasure:**
+  * Emerges as a continuous architectural evolution alongside existing Data Lake and Data Warehouse patterns rather than forcing an all-or-nothing replacement.
+  * Requires clear boundary definitions across raw/tiered lake storage, Gold datasets, Lakehouse tables, and traditional DW structures (to be detailed in upcoming lessons and applied to Minishop).
+
+  ### 5.2 Lakehouse Architecture Components
+* **Architectural Pattern, Not a Single Product:**
+  * Combines existing storage, file formats, metadata catalogs, and query/processing engines so files in a Data Lake can be queried like analytical tables without redundant data movement into a separate DW.
+* **Core Layers of a Lakehouse:**
+  * **Scalable Storage Layer:** Distributed/object storage (e.g., `HDFS`, `Amazon S3`, `Azure Data Lake`, `Google Cloud Storage`) holding files organized in directories and partitions (e.g., by date or region) at low cost.
+  * **Optimized File Formats:** Analytical formats such as `Parquet` and `Avro` (and columnar compression with internal metadata) that outperform plain text formats like `CSV` during large-scale scans.
+  * **Metadata Catalog Layer:** Maps file locations, schemas, column types, and formats into table abstractions so query engines know how to read the files (e.g., `Hive Metastore`, `AWS Glue Catalog`).
+  * **Analytical Processing Engines:** Execute SQL and distributed analytics directly over lake files (e.g., `Apache Spark`, `Trino`, `Presto`, `DuckDB`).
+
+### 5.3 Roles of the Data Lake (Gold), Data Warehouse, and Lakehouse
+* **Complementary Rather Than Competing Layers:**
+  * Each layer serves a distinct analytical purpose and governance profile; avoiding unnecessary duplication keeps the architecture simpler and easier to maintain.
+* **Comparison Across Core Dimensions:**
+
+| Dimension | Data Lake (Gold Tier) | Data Warehouse | Lakehouse |
+| :--- | :--- | :--- | :--- |
+| **Primary Goal** | Prepare, cleanse, standardize, and enrich operational data into flexible analytical datasets | Structure curated business metrics and historical models for consistent BI reporting | Query large lake-stored datasets directly as analytical tables without mandatory DW movement |
+| **Storage Format** | Files in lake storage (`Parquet`, `Avro`, `JSON`, `CSV`) | Tables inside an analytical database engine | Lake files exposed via a metadata/table abstraction layer |
+| **Data Modeling** | Closer to source/domain structure after standardization | Structured dimensional/multidimensional schema (facts & dimensions, OLAP) | Table abstractions over lake files supporting SQL analytics |
+| **Primary Use Cases** | Data exploration, Data Science, Machine Learning, dataset preparation | Corporate reports, executive dashboards, official KPIs, financial analysis | Direct SQL/analytical queries over large volumes in the lake |
+| **Governance** | Intermediate governance balancing structure and exploratory flexibility | Strongest governance for official enterprise metrics and definitions | Governance applied on analytical table definitions over lake files |
+| **Performance** | Varies by file format, compression, and layout/partitioning | Consistently high for structured analytical/OLAP workloads | High when paired with columnar formats (`Parquet`) and distributed query engines |
+| **Data Volume & Duplication** | Very large volumes; acts as source/foundation for downstream layers | Typically a curated, consolidated subset; often replicates/moves data | Handles very large volumes on scalable lake storage while reducing data duplication |
+| **Typical Tooling** | `Spark`, `Python`, programming frameworks | Analytical SQL, ETL/ELT tools, BI platforms | `Spark`, `Trino`, and SQL engines querying lake files as tables |
