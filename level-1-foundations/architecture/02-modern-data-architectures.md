@@ -454,3 +454,33 @@
 | **Performance** | Varies by file format, compression, and layout/partitioning | Consistently high for structured analytical/OLAP workloads | High when paired with columnar formats (`Parquet`) and distributed query engines |
 | **Data Volume & Duplication** | Very large volumes; acts as source/foundation for downstream layers | Typically a curated, consolidated subset; often replicates/moves data | Handles very large volumes on scalable lake storage while reducing data duplication |
 | **Typical Tooling** | `Spark`, `Python`, programming frameworks | Analytical SQL, ETL/ELT tools, BI platforms | `Spark`, `Trino`, and SQL engines querying lake files as tables |
+
+### 5.4 End-to-End Example Across Layers: Accounts Receivable & Default Rate
+* **Scenario:** Tracking accounts receivable aging buckets (past due vs. upcoming) and customer default rates by city and state from a single operational domain.
+* **Layer-by-Layer Progression:**
+  * **OLTP (Operational Source):** Stores transactional records (`FATURA` with invoice ID, customer ID, invoice amount, due date, payment date, paid amount; `CLIENTE` with customer ID, name, raw address). Designed for day-to-day recording rather than historical/aging analytics.
+  * **Data Lake — Bronze (Raw):** Preserves native source extracts without transformation—e.g., high-volume `FATURAS_2026_JANEIRO.PARQUET` and smaller `CLIENTE.JSON`.
+  * **Data Lake — Silver (Staged/Prepared):** Joins invoices with customers, parses city and state from address, and derives payment status (`PAGO`, `ABERTO`, `PAGO ATRASO`) plus days overdue (`ATRASO`).
+  * **Data Lake — Gold (Curated Datasets):** Adds analytical classifications and indicators directly on invoice-level datasets—such as aging bucket (`AGING`: `Em dia`, `Aberto`, `0-15`) and delinquency flag (`INAD`: `True`/`False`).
+  * **Lakehouse (Table Abstraction over Lake Files):** Uses a metadata catalog over lake directories/files so SQL engines can query files directly as tables (e.g., `SELECT * FROM contas_a_receber`) for large-scale exploration and data science without moving all files into a separate database.
+  * **Data Warehouse (Dimensional Model):** Structures consolidated metrics and surrogate keys (`SK_CLIENTE`, `SK_TEMPO` as `YYYYMMDD`, `SK_AGING`) across fact and dimension tables (`FATO`, `DIM CLIENTE`, `DIM TEMPO`, `DIM AGING`) to serve governed corporate reporting and official management KPIs.
+
+### 5.5 Lakehouse in the Minishop Architecture
+* **End-to-End Minishop Data Architecture:**
+  * **OLTP (Operational Layer):** Captures day-to-day e-commerce transactions across operational tables; optimized for transactional integrity rather than large-scale historical analytics.
+  * **Data Lake (Bronze, Silver, Gold):** Receives extracts from OLTP—preserving raw state in **Bronze**, cleansing/standardizing in **Silver**, and enriching/denormalizing analytical datasets (such as sales linked with customer and product context) in **Gold**.
+  * **Lakehouse Layer:** Exposes prepared datasets—typically from the **Gold** tier and stored in columnar formats like `Parquet`—through a **metadata catalog** (e.g., `Hive`, `AWS Glue`) so SQL/analytical tools can query them directly as tables without copying all data into another warehouse.
+  * **Data Warehouse (Dimensional Layer):** Remains the structured corporate reporting layer fed by the ETL pipeline (reading prepared datasets from **Bronze** or **Silver**), complementing rather than being replaced by the Lakehouse.
+* **Key Takeaway:**
+  * `OLTP` handles operations, `Data Lake` stores and progresses raw-to-curated files, `Lakehouse` enables direct SQL querying over lake files via metadata abstractions, and `Data Warehouse` serves governed dimensional reporting—working together without competing.
+
+
+### 5.6 Supplemental Reading: Avoiding Data Duplication Across Layers
+* **Why Redundancy Matters:**
+  * Interconnected layers (`Data Lake`, `Data Warehouse`, `Lakehouse`) can introduce unnecessary data replication, leading to storage overhead, synchronization inconsistencies, and governance friction.
+* **Strategies to Minimize Duplication:**
+  * **Clear Layer Boundaries:** Keep broad, cleansed domain datasets in the Data Lake's **Gold** tier and replicate only the structured, consolidated subset required for corporate reporting and historical KPIs into the **Data Warehouse**.
+  * **Query-in-Place via Lakehouse:** Expose lake files as SQL-queryable analytical tables through the **Lakehouse** layer, eliminating redundant bulk transfers into a separate warehouse engine.
+* **Benefits & Intentional Exceptions:**
+  * **Core Gains:** Lower storage and compute costs, reduced synchronization drift across copies, and faster analytical turnaround.
+  * **Justified Replication:** Selective replication/consolidation remains appropriate when strict SLA performance or enterprise governance requirements demand pre-modeled warehouse structures—provided it is planned and controlled.
